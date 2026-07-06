@@ -4,7 +4,7 @@ import http from 'node:http';
 import { env, setupMessage } from '../../config/env';
 import { getSetting, setSetting } from '../../db/database';
 import { audit, logger } from '../../utils/logger';
-import { withRetry } from '../../utils/retry';
+import { NonRetryableError, withRetry } from '../../utils/retry';
 
 /**
  * TikTok OAuth 2.0 (authorization-code) helper — official endpoints only.
@@ -198,7 +198,8 @@ export async function getValidAccessToken(): Promise<string> {
       stored.refreshExpiresAt &&
       new Date(stored.refreshExpiresAt).getTime() < Date.now()
     ) {
-      throw new Error(
+      // NonRetryableError: retrying cannot fix an expired refresh token.
+      throw new NonRetryableError(
         'TikTok refresh token has expired — run `npm run tiktok-auth` to re-authorize.',
       );
     }
@@ -207,7 +208,8 @@ export async function getValidAccessToken(): Promise<string> {
   }
 
   if (env.TIKTOK_ACCESS_TOKEN) return env.TIKTOK_ACCESS_TOKEN;
-  throw new Error(setupMessage('tiktok'));
+  // NonRetryableError: missing configuration will not appear between retries.
+  throw new NonRetryableError(setupMessage('tiktok'));
 }
 
 // ---------------------------------------------------------------------------

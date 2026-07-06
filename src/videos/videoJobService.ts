@@ -86,13 +86,16 @@ export async function runJob(jobId: number): Promise<void> {
   const idea = getIdea(job.ideaId);
   if (!idea) throw new Error(`Idea ${job.ideaId} for job ${jobId} not found`);
 
-  const client = getViewMaxClient();
-  const request: ViewMaxVideoRequest = job.requestPayload
-    ? (JSON.parse(job.requestPayload) as ViewMaxVideoRequest)
-    : buildViewMaxRequest(idea);
-
   try {
     updateVideoJob(jobId, { attempts: job.attempts + 1, error: null });
+
+    // Acquire the client INSIDE the try block: a ViewMax config error must
+    // mark the job 'failed' (releasing the idea) rather than leaving it
+    // stuck in 'queued' forever.
+    const client = getViewMaxClient();
+    const request: ViewMaxVideoRequest = job.requestPayload
+      ? (JSON.parse(job.requestPayload) as ViewMaxVideoRequest)
+      : buildViewMaxRequest(idea);
 
     // 1. Submit to ViewMax (client handles its own HTTP retry).
     const ref = await client.createVideoJob(request);

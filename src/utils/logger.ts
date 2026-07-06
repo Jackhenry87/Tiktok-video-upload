@@ -1,22 +1,23 @@
 import pino from 'pino';
+import pretty from 'pino-pretty';
 import { env } from '../config/env';
 
 /**
  * Application logger (pino). Pretty-printed for CLI usage.
+ * The pretty stream runs SYNCHRONOUSLY (not the worker-thread transport) so
+ * log lines interleave in chronological order with console output.
  * Significant business events are additionally persisted to the SQLite
  * `logs` table via audit() below.
  */
-export const logger = pino({
-  level: env.LOG_LEVEL || 'info',
-  transport: {
-    target: 'pino-pretty',
-    options: {
-      colorize: true,
-      translateTime: 'SYS:HH:MM:ss',
-      ignore: 'pid,hostname',
-    },
-  },
-});
+export const logger = pino(
+  { level: env.LOG_LEVEL || 'info' },
+  pretty({
+    colorize: true,
+    translateTime: 'SYS:HH:MM:ss',
+    ignore: 'pid,hostname',
+    sync: true,
+  }),
+);
 
 /**
  * Log to pino AND persist to the logs table (audit trail).

@@ -40,6 +40,15 @@ function fail(err: unknown): void {
   process.exitCode = 1;
 }
 
+/** Strict positive-integer id parse so typos never become "Draft NaN". */
+function parseId(value: string, what: string): number {
+  const n = Number(value);
+  if (!Number.isInteger(n) || n <= 0) {
+    throw new Error(`Not a valid ${what} id: "${value}"`);
+  }
+  return n;
+}
+
 export function buildProgram(): Command {
   const program = new Command();
   program
@@ -108,7 +117,7 @@ export function buildProgram(): Command {
     .action(async (opts: { idea?: string }) => {
       banner();
       try {
-        const jobId = await createVideo(opts.idea ? Number(opts.idea) : undefined);
+        const jobId = await createVideo(opts.idea ? parseId(opts.idea, 'idea') : undefined);
         if (jobId !== undefined) {
           console.log(`\nVideo job ${jobId} completed. Next: npm run review`);
         }
@@ -131,7 +140,8 @@ export function buildProgram(): Command {
           Number(opts.concurrency) || 2,
         );
         console.log(`\nBatch finished: ${result.processed} succeeded, ${result.failed} failed.`);
-        console.log('Next: npm run review');
+        if (result.processed > 0) console.log('Next: npm run review');
+        if (result.failed > 0) process.exitCode = 1;
       } catch (err) {
         fail(err);
       }
@@ -153,17 +163,17 @@ export function buildProgram(): Command {
       banner();
       try {
         if (opts.approve) {
-          const d = approveDraft(Number(opts.approve), opts.note);
+          const d = approveDraft(parseId(opts.approve, 'draft'), opts.note);
           console.log(`Approved draft #${d.id}. Next: npm run schedule (or npm run upload)`);
           return;
         }
         if (opts.reject) {
-          const d = rejectDraft(Number(opts.reject), opts.note);
+          const d = rejectDraft(parseId(opts.reject, 'draft'), opts.note);
           console.log(`Rejected draft #${d.id}.`);
           return;
         }
         if (opts.regenerate) {
-          const d = regenerateDraft(Number(opts.regenerate), opts.note);
+          const d = regenerateDraft(parseId(opts.regenerate, 'draft'), opts.note);
           console.log(`Draft #${d.id} flagged for regeneration — run npm run create-video.`);
           return;
         }
@@ -174,14 +184,14 @@ export function buildProgram(): Command {
           if (!opts.caption && !hashtags) {
             throw new Error('--edit needs --caption and/or --hashtags');
           }
-          const d = editDraft(Number(opts.edit), { caption: opts.caption, hashtags });
+          const d = editDraft(parseId(opts.edit, 'draft'), { caption: opts.caption, hashtags });
           console.log(`Edited draft #${d.id}.`);
           console.log(`  caption:  ${d.caption}`);
           console.log(`  hashtags: ${d.hashtags.map((h) => `#${h}`).join(' ')}`);
           return;
         }
         if (opts.show) {
-          const d = getDraft(Number(opts.show));
+          const d = getDraft(parseId(opts.show, 'draft'));
           if (!d) throw new Error(`Draft ${opts.show} not found`);
           console.log(JSON.stringify(d, null, 2));
           return;
@@ -233,7 +243,7 @@ export function buildProgram(): Command {
         const result = opts.retryFailed
           ? await retryFailedUploads()
           : await uploadApprovedDrafts({
-              draftId: opts.draft ? Number(opts.draft) : undefined,
+              draftId: opts.draft ? parseId(opts.draft, 'draft') : undefined,
               now: Boolean(opts.now),
             });
         for (const u of result.uploaded) {
@@ -250,6 +260,12 @@ export function buildProgram(): Command {
         }
         if (!result.uploaded.length && !result.skipped.length && !result.failed.length) {
           console.log('Nothing to upload.');
+        }
+        // Non-zero exit for cron/CI: any hard failure, or an explicitly
+        // requested draft that doesn't exist.
+        if (result.failed.length) process.exitCode = 1;
+        if (opts.draft && result.skipped.some((s) => s.reason === 'draft not found')) {
+          process.exitCode = 1;
         }
       } catch (err) {
         fail(err);
