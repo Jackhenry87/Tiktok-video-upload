@@ -1,0 +1,44 @@
+{
+  "name": "tiktok-video-automation",
+  "version": "1.0.0",
+  "description": "Original TikTok video automation: trend research, idea generation, ViewMax video creation, manual review, and official-API uploads. Never reposts or downloads other creators' content.",
+  "private": true,
+  "main": "dist/index.js",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "start": "tsx src/index.ts",
+    "trends": "tsx src/index.ts trends",
+    "ideas": "tsx src/index.ts ideas",
+    "create-video": "tsx src/index.ts create-video",
+    "create-batch": "tsx src/index.ts create-batch",
+    "review": "tsx src/index.ts review",
+    "upload": "tsx src/index.ts upload",
+    "schedule": "tsx src/index.ts schedule",
+    "status": "tsx src/index.ts status",
+    "clean": "tsx src/index.ts clean"
+  },
+  "dependencies": {
+    "axios": "^1.7.9",
+    "better-sqlite3": "^11.8.0",
+    "commander": "^12.1.0",
+    "date-fns": "^3.6.0",
+    "date-fns-tz": "^3.2.0",
+    "dotenv": "^16.4.7",
+    "fs-extra": "^11.2.0",
+    "p-retry": "^4.6.2",
+    "pino": "^9.6.0",
+    "pino-pretty": "^11.3.0",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.12",
+    "@types/fs-extra": "^11.0.4",
+    "@types/node": "^22.10.5",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.3"
+  }
+}
