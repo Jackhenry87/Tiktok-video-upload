@@ -305,6 +305,17 @@ export function getVideoJob(id: number): VideoJob | undefined {
   return row ? rowToVideoJob(row) : undefined;
 }
 
+/** True when the idea already has a job that is queued or in flight. */
+export function ideaHasActiveVideoJob(ideaId: number): boolean {
+  const row = getDb()
+    .prepare(
+      `SELECT id FROM video_jobs
+       WHERE idea_id = ? AND status IN ('queued','submitted','processing') LIMIT 1`,
+    )
+    .get(ideaId);
+  return Boolean(row);
+}
+
 export function listVideoJobs(opts: { status?: VideoJobStatus; limit?: number } = {}): VideoJob[] {
   const rows = getDb()
     .prepare(
@@ -506,27 +517,6 @@ export function getUploadForDraft(draftId: number): UploadRecord | undefined {
     .prepare('SELECT * FROM uploads WHERE draft_id = ? ORDER BY id DESC LIMIT 1')
     .get(draftId);
   return row ? rowToUpload(row) : undefined;
-}
-
-/** Count successful uploads whose uploaded_at falls on the given UTC day. */
-export function countUploadsOnDay(isoDay: string): number {
-  const row = getDb()
-    .prepare(
-      `SELECT COUNT(*) AS c FROM uploads
-       WHERE status = 'uploaded' AND uploaded_at LIKE ? || '%'`,
-    )
-    .get(isoDay) as { c: number };
-  return row.c;
-}
-
-export function countScheduledOnDay(isoDay: string): number {
-  const row = getDb()
-    .prepare(
-      `SELECT COUNT(*) AS c FROM uploads
-       WHERE status = 'scheduled' AND scheduled_at LIKE ? || '%'`,
-    )
-    .get(isoDay) as { c: number };
-  return row.c;
 }
 
 // ---------------------------------------------------------------------------

@@ -42,7 +42,8 @@ export function sanitizeText(text: string): { text: string; issues: ComplianceIs
   let output = text;
 
   for (const phrase of config.bannedPhrases) {
-    const pattern = new RegExp(escapeRegExp(phrase), 'gi');
+    // Word boundaries so "cures" never matches inside "epicures", etc.
+    const pattern = new RegExp(`\\b${escapeRegExp(phrase)}\\b`, 'gi');
     if (pattern.test(output)) {
       const replacement = config.phraseReplacements[phrase.toLowerCase()] ?? '';
       output = output.replace(pattern, replacement);
@@ -163,11 +164,30 @@ export function validateIdea(idea: VideoIdea): {
 } {
   const issues: ComplianceIssue[] = [];
 
-  const scriptPass = sanitizeText(idea.script);
+  // Sanitize the scenes FIRST — the ViewMax video request is built from
+  // scenes[], so cleaning only the flat script/voiceover strings would let
+  // banned phrases (e.g. from a user-supplied trend hook) reach the video.
+  const scenes = idea.scenes.map((scene) => {
+    const vo = sanitizeText(scene.voiceover);
+    const ost = sanitizeText(scene.onScreenText);
+    const desc = sanitizeText(scene.description);
+    const broll = sanitizeText(scene.broll);
+    issues.push(...vo.issues, ...ost.issues, ...desc.issues, ...broll.issues);
+    return { ...scene, voiceover: vo.text, onScreenText: ost.text, description: desc.text, broll: broll.text };
+  });
+
+  // Rebuild the derived strings from the sanitized scenes so they can never
+  // diverge from what the video will actually contain.
+  const scriptPass = {
+    text: scenes
+      .map((s) => `[Scene ${s.index + 1} — ${s.durationSec}s] ${s.voiceover}`)
+      .join('\n'),
+    issues: [] as ComplianceIssue[],
+  };
+  const voPass = { text: scenes.map((s) => s.voiceover).join(' '), issues: [] as ComplianceIssue[] };
   const hookPass = sanitizeText(idea.hook);
   const captionPass = sanitizeText(idea.caption);
-  const voPass = sanitizeText(idea.voiceoverText);
-  issues.push(...scriptPass.issues, ...hookPass.issues, ...captionPass.issues, ...voPass.issues);
+  issues.push(...hookPass.issues, ...captionPass.issues);
 
   const disclaimered = ensureDisclaimer(captionPass.text, idea.niche);
   if (disclaimered.added) {
@@ -182,22 +202,36 @@ export function validateIdea(idea: VideoIdea): {
   issues.push(...tagPass.issues);
 
   // Hard blocks are evaluated on the sanitized text — if a blocking claim
-  // still remains after sanitization, the idea is rejected.
-  const combined = [scriptPass.text, hookPass.text, disclaimered.caption, voPass.text].join('\n');
+  // still remains after sanitization, the idea is rejected. Scene text is
+  // included so nothing block-worthy can hide in the video itself.
+  const combined = [
+    scriptPass.text,
+    hookPass.text,
+    disclaimered.caption,
+    voPass.text,
+    ...scenes.map((s) => `${s.description} ${s.onScreenText}`),
+  ].join('\n');
   issues.push(...checkClaims(combined));
 
   const blocked = issues.some((i) => i.severity === 'block');
+  const deduped = issues.filter(
+    (issue, idx) =>
+      issues.findIndex((i) => i.rule === issue.rule && i.detail === issue.detail) === idx,
+  );
   const updated: VideoIdea = {
     ...idea,
+    scenes,
+    onScreenText: scenes.map((s) => s.onScreenText),
+    brollInstructions: scenes.map((s) => `Scene ${s.index + 1}: ${s.broll}`),
     script: scriptPass.text,
     hook: hookPass.text,
     caption: disclaimered.caption,
     voiceoverText: voPass.text,
     hashtags: tagPass.hashtags,
-    complianceNotes: issues.map((i) => `[${i.severity}] ${i.rule}: ${i.detail}`),
+    complianceNotes: deduped.map((i) => `[${i.severity}] ${i.rule}: ${i.detail}`),
   };
 
-  return { idea: updated, result: { ok: !blocked, issues } };
+  return { idea: updated, result: { ok: !blocked, issues: deduped } };
 }
 
 /** Final gate right before an upload happens. */

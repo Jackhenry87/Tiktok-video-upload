@@ -43,6 +43,8 @@ In mock mode the app generates fake trends, fake ideas, a placeholder video job,
 | `npm run schedule` | Assign posting slots to approved drafts; `-- --list` shows free slots |
 | `npm run status` | Dashboard: table counts, job/draft/upload statuses, recent jobs |
 | `npm run clean` | Remove rejected/stale drafts and failed-job files (`-- --days 30 --dry-run`) |
+| `npm run tiktok-auth` | OAuth with TikTok; tokens stored + auto-refreshed (`-- --status`, `-- --refresh`) |
+| `npm run viewmax-catalog` | List ViewMax templates, voices, and styles |
 
 > Note: npm needs `--` before flags, e.g. `npm run review -- --approve 2`.
 
@@ -77,10 +79,25 @@ Set `MOCK_MODE=true` (the `.env.example` default). Everything works end-to-end l
 
 ## Connecting the TikTok API
 
-1. Create an app at <https://developers.tiktok.com>, enable the **Content Posting API** product, and request the `video.publish` scope.
-2. Complete the OAuth authorization-code flow with your `TIKTOK_CLIENT_KEY`, `TIKTOK_CLIENT_SECRET`, and `TIKTOK_REDIRECT_URI`; store the resulting user token as `TIKTOK_ACCESS_TOKEN`.
-3. **Unaudited apps can only post `SELF_ONLY` (private)** — keep `DEFAULT_PRIVACY_STATUS=SELF_ONLY` until TikTok audits your app.
+1. Create an app at <https://developers.tiktok.com>, enable the **Content Posting API** product, and request the `video.publish` scope. Register a redirect URI (the default `http://localhost:8787/callback` works for local use).
+2. Put `TIKTOK_CLIENT_KEY`, `TIKTOK_CLIENT_SECRET`, and `TIKTOK_REDIRECT_URI` in `.env`, then run:
+
+   ```bash
+   npm run tiktok-auth
+   ```
+
+   A browser URL is printed; approve the app and the CLI captures the redirect automatically (localhost redirect URIs) or you paste the code back with `npm run tiktok-auth -- --code <code>`. Tokens are stored in the local database and **refresh automatically** (TikTok access tokens expire every ~24 h — the static `TIKTOK_ACCESS_TOKEN` env var also works but goes stale daily). Check with `npm run tiktok-auth -- --status`.
+3. **Unaudited apps can only post `SELF_ONLY` (private)** — keep `DEFAULT_PRIVACY_STATUS=SELF_ONLY` until TikTok audits your app, then switch to `PUBLIC_TO_EVERYONE`.
 4. The client (`src/connectors/tiktok/tiktokClient.ts`) uses the documented direct-post flow: `POST /v2/post/publish/video/init/` → chunked `PUT` to the returned `upload_url` → poll `/v2/post/publish/status/fetch/`. The TikTok video/publish IDs are stored in the `uploads` table.
+
+## Going live checklist
+
+1. `cp .env.example .env`, set `MOCK_MODE=false`.
+2. TikTok: developer app + `npm run tiktok-auth` (see above). Uploads are private (`SELF_ONLY`) until your app passes TikTok's audit.
+3. ViewMax: set `VIEWMAX_API_KEY`/`VIEWMAX_BASE_URL`, align the `TODO(real-api)` endpoints in `viewmaxClient.ts` with the real docs, then run `npm run viewmax-catalog` and set `VIEWMAX_STYLE_PRESET`/`VIEWMAX_VOICE_PRESET` to real ids.
+4. Trend sources: point `TREND_CSV_PATH` at your CSV, add `RSS_FEEDS`, or maintain `app.config.json` manualTrends.
+5. Keep `REVIEW_REQUIRED=true` and approve every draft (`npm run review`) before `npm run upload`.
+6. Optional cron: `npm run upload` hourly — only approved, due, under-cap drafts ever publish.
 
 Scheduling note: the Content Posting API has no native schedule-time for direct posts, so scheduling is local — `npm run schedule` assigns slots, and `npm run upload` (run manually or from cron) publishes drafts whose slot is due.
 

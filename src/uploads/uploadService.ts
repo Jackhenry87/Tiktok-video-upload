@@ -3,7 +3,6 @@ import { env, reviewRequired, tikTokMode } from '../config/env';
 import { getAppConfig } from '../config/appConfig';
 import { getTikTokClient } from '../connectors/tiktok/tiktokClient';
 import {
-  countUploadsOnDay,
   getIdea,
   getUploadForDraft,
   insertUpload,
@@ -13,8 +12,8 @@ import {
   updateUpload,
 } from '../db/database';
 import { audit, logger } from '../utils/logger';
-import { withRetry } from '../utils/retry';
-import { validateUploadText } from '../utils/validators';
+import { cleanHashtags, validateUploadText } from '../utils/validators';
+import { localDayKey } from './scheduleService';
 import type { Draft, UploadRecord } from '../types';
 
 /**
@@ -97,9 +96,13 @@ export async function uploadApprovedDrafts(opts: {
       continue;
     }
 
-    // Gate 3: daily cap.
-    const today = nowIso.slice(0, 10);
-    if (countUploadsOnDay(today) >= config.maxDailyUploads) {
+    // Gate 3: daily cap — counted per LOCAL calendar day (TIMEZONE),
+    // re-checked every iteration so one run can't blow past the limit.
+    const today = localDayKey(new Date());
+    const uploadedToday = listUploads({ status: 'uploaded', limit: 5000 }).filter(
+      (u) => u.uploadedAt && localDayKey(u.uploadedAt) === today,
+    ).length;
+    if (uploadedToday >= config.maxDailyUploads) {
       result.skipped.push({
         draftId,
         reason: `daily upload limit reached (${config.maxDailyUploads})`,
@@ -107,19 +110,22 @@ export async function uploadApprovedDrafts(opts: {
       continue;
     }
 
-    // Gate 4: final compliance check.
+    // Gate 4: final compliance check — fails CLOSED: without the idea row
+    // we cannot verify niche disclaimers, so the draft does not upload.
     const idea = getIdea(draft.ideaId);
-    const compliance = validateUploadText(draft.caption, idea?.niche ?? '');
+    if (!idea) {
+      result.skipped.push({
+        draftId,
+        reason: 'idea record missing — cannot verify compliance, refusing to upload',
+      });
+      audit('warn', 'Upload blocked: idea record missing', { draftId });
+      continue;
+    }
+    const compliance = validateUploadText(draft.caption, idea.niche);
     if (!compliance.ok) {
       const reasons = compliance.issues.map((i) => i.detail).join('; ');
       result.skipped.push({ draftId, reason: `compliance: ${reasons}` });
       audit('warn', 'Upload blocked by compliance', { draftId, reasons });
-      continue;
-    }
-
-    // Gate 5: the video file must exist.
-    if (!(await fs.pathExists(draft.videoPath))) {
-      result.failed.push({ draftId, error: `video file missing: ${draft.videoPath}` });
       continue;
     }
 
@@ -132,18 +138,37 @@ export async function uploadApprovedDrafts(opts: {
             status: 'scheduled',
           });
 
+    // Gate 5: the video file must exist. Persist the failure so
+    // `upload --retry-failed` can pick it up once the file is restored.
+    if (!(await fs.pathExists(draft.videoPath))) {
+      const error = `video file missing: ${draft.videoPath}`;
+      updateUpload(uploadId, { status: 'failed', error });
+      result.failed.push({ draftId, error });
+      audit('error', 'Upload failed: video file missing', { draftId, videoPath: draft.videoPath });
+      continue;
+    }
+
     try {
       updateUpload(uploadId, { status: 'uploading', attempts: (existing?.attempts ?? 0) + 1 });
-      const uploadResult = await withRetry(
-        () =>
-          client.uploadVideo({
-            videoFilePath: draft.videoPath,
-            caption: draft.caption,
-            hashtags: draft.hashtags,
-            privacyStatus: env.DEFAULT_PRIVACY_STATUS,
-          }),
-        { label: `TikTok upload draft ${draftId}`, retries: 2 },
-      );
+      // No outer retry wrapper here: the client already retries each step
+      // (init / chunk PUT / status) with backoff, and an outer retry would
+      // re-send the whole video even for non-retryable 4xx errors. Failed
+      // uploads stay retryable via `npm run upload -- --retry-failed`.
+      // Re-clean hashtags at the last gate (dedupe, spam filter, cap) so
+      // nothing that bypassed idea-time cleaning reaches the post title.
+      const finalTags = cleanHashtags(draft.hashtags);
+      if (finalTags.issues.length) {
+        audit('warn', 'Hashtags cleaned at upload time', {
+          draftId,
+          issues: finalTags.issues.map((i) => i.detail),
+        });
+      }
+      const uploadResult = await client.uploadVideo({
+        videoFilePath: draft.videoPath,
+        caption: draft.caption,
+        hashtags: finalTags.hashtags,
+        privacyStatus: env.DEFAULT_PRIVACY_STATUS,
+      });
 
       updateUpload(uploadId, {
         status: 'uploaded',

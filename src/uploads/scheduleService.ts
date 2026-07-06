@@ -3,11 +3,10 @@ import { fromZonedTime, toZonedTime } from 'date-fns-tz';
 import { env } from '../config/env';
 import { getAppConfig } from '../config/appConfig';
 import {
-  countScheduledOnDay,
-  countUploadsOnDay,
   getUploadForDraft,
   insertUpload,
   listDrafts,
+  listUploads,
 } from '../db/database';
 import { audit, logger } from '../utils/logger';
 
@@ -16,7 +15,36 @@ import { audit, logger } from '../utils/logger';
  * in the configured TIMEZONE and converted to UTC instants. The TikTok
  * Content Posting API has no native schedule-time for direct posts, so
  * `npm run upload` publishes drafts whose scheduled time has arrived.
+ *
+ * IMPORTANT: the MAX_DAILY_UPLOADS cap is bucketed by *local* calendar day
+ * (in TIMEZONE), not UTC day — a 19:00 Chicago slot lands on the next UTC
+ * day but still counts against the same local day.
  */
+
+/** Calendar-day key (yyyy-MM-dd) of a UTC instant in the configured TZ. */
+export function localDayKey(utcIso: string | Date): string {
+  const date = typeof utcIso === 'string' ? new Date(utcIso) : utcIso;
+  return format(toZonedTime(date, env.TIMEZONE), 'yyyy-MM-dd');
+}
+
+/**
+ * Uploads-per-local-day usage map from existing rows:
+ * scheduled rows count by their slot, uploaded rows by when they happened.
+ */
+export function dailyUsage(): Map<string, number> {
+  const usage = new Map<string, number>();
+  for (const u of listUploads({ limit: 5000 })) {
+    let stamp: string | undefined;
+    if (u.status === 'scheduled') stamp = u.scheduledAt;
+    else if (u.status === 'uploaded' || u.status === 'uploading') {
+      stamp = u.uploadedAt ?? u.scheduledAt;
+    }
+    if (!stamp) continue;
+    const day = localDayKey(stamp);
+    usage.set(day, (usage.get(day) ?? 0) + 1);
+  }
+  return usage;
+}
 
 /** All future posting slots (UTC ISO) for the next `daysAhead` days. */
 export function upcomingSlots(daysAhead = 7): string[] {
@@ -41,10 +69,9 @@ export function upcomingSlots(daysAhead = 7): string[] {
 /** Next free slot that respects the daily upload cap. Returns UTC ISO. */
 export function previewNextSlot(): string | undefined {
   const config = getAppConfig();
+  const usage = dailyUsage();
   for (const slot of upcomingSlots(14)) {
-    const day = slot.slice(0, 10);
-    const used = countScheduledOnDay(day) + countUploadsOnDay(day);
-    if (used < config.maxDailyUploads) return slot;
+    if ((usage.get(localDayKey(slot)) ?? 0) < config.maxDailyUploads) return slot;
   }
   return undefined;
 }
@@ -56,7 +83,7 @@ export interface ScheduleResult {
 
 /**
  * Assign posting slots to approved drafts that don't have one yet.
- * Respects MAX_DAILY_UPLOADS per calendar day.
+ * Respects MAX_DAILY_UPLOADS per local calendar day.
  */
 export function scheduleApprovedDrafts(): ScheduleResult {
   const config = getAppConfig();
@@ -68,8 +95,9 @@ export function scheduleApprovedDrafts(): ScheduleResult {
     return result;
   }
 
-  // Track per-day usage as we assign so one run distributes across days.
-  const usage = new Map<string, number>();
+  // One usage snapshot, updated in memory as we assign (rows are inserted
+  // immediately, so re-querying would double-count what we just placed).
+  const usage = dailyUsage();
   const slots = upcomingSlots(30);
 
   for (const draft of approved) {
@@ -83,20 +111,17 @@ export function scheduleApprovedDrafts(): ScheduleResult {
       continue;
     }
 
-    const slot = slots.find((s) => {
-      const day = s.slice(0, 10);
-      const used =
-        (usage.get(day) ?? 0) + countScheduledOnDay(day) + countUploadsOnDay(day);
-      return used < config.maxDailyUploads;
-    });
-    if (!slot) {
+    const slotIndex = slots.findIndex(
+      (s) => (usage.get(localDayKey(s)) ?? 0) < config.maxDailyUploads,
+    );
+    if (slotIndex === -1) {
       result.skipped.push({ draftId: draft.id!, reason: 'no free slot in the next 30 days' });
       continue;
     }
-
-    const day = slot.slice(0, 10);
+    const slot = slots[slotIndex]!;
+    const day = localDayKey(slot);
     usage.set(day, (usage.get(day) ?? 0) + 1);
-    slots.splice(slots.indexOf(slot), 1);
+    slots.splice(slotIndex, 1);
 
     insertUpload({
       draftId: draft.id!,

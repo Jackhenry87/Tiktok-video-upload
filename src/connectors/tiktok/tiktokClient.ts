@@ -1,6 +1,7 @@
 import axios, { AxiosError } from 'axios';
 import fs from 'fs-extra';
-import { env, setupMessage, tikTokMode } from '../../config/env';
+import { env, resolveMode } from '../../config/env';
+import { getValidAccessToken, hasTikTokAuth } from './tiktokAuth';
 import { logger } from '../../utils/logger';
 import { NonRetryableError, sleep, withRetry } from '../../utils/retry';
 import type {
@@ -32,11 +33,12 @@ const MAX_SINGLE_CHUNK = 64 * 1024 * 1024;
  * retried politely with exponential backoff.
  */
 export class HttpTikTokClient implements TikTokConnector {
-  constructor(private readonly accessToken: string) {}
+  /** tokenProvider lets tokens auto-refresh between calls (see tiktokAuth). */
+  constructor(private readonly tokenProvider: () => Promise<string>) {}
 
-  private authHeaders() {
+  private async authHeaders() {
     return {
-      Authorization: `Bearer ${this.accessToken}`,
+      Authorization: `Bearer ${await this.tokenProvider()}`,
       'Content-Type': 'application/json; charset=UTF-8',
     };
   }
@@ -92,7 +94,7 @@ export class HttpTikTokClient implements TikTokConnector {
           const res = await axios.post<TikTokInitResponse>(
             `${TIKTOK_API_BASE}/v2/post/publish/video/init/`,
             initBody,
-            { headers: this.authHeaders(), timeout: 30_000 },
+            { headers: await this.authHeaders(), timeout: 30_000 },
           );
           if (res.data.error?.code && res.data.error.code !== 'ok') {
             throw new NonRetryableError(
@@ -161,7 +163,7 @@ export class HttpTikTokClient implements TikTokConnector {
           const res = await axios.post(
             `${TIKTOK_API_BASE}/v2/post/publish/status/fetch/`,
             { publish_id: publishId },
-            { headers: this.authHeaders(), timeout: 30_000 },
+            { headers: await this.authHeaders(), timeout: 30_000 },
           );
           const data = res.data?.data ?? {};
           return {
@@ -215,20 +217,20 @@ let instance: TikTokConnector | undefined;
 
 export function getTikTokClient(): TikTokConnector {
   if (instance) return instance;
-  const mode = tikTokMode();
+  // Configured = stored OAuth tokens (npm run tiktok-auth) OR env token.
+  const mode = resolveMode(hasTikTokAuth());
   if (mode === 'mock') {
     if (env.MOCK_MODE !== true) {
       logger.warn(
         'TikTok credentials not set — using mock TikTok client (no real uploads). ' +
-          'Set TIKTOK_ACCESS_TOKEN for real uploads.',
+          'Run `npm run tiktok-auth` (or set TIKTOK_ACCESS_TOKEN) for real uploads.',
       );
     }
     instance = new MockTikTokClient();
     return instance;
   }
-  if (!env.TIKTOK_ACCESS_TOKEN) {
-    throw new Error(setupMessage('tiktok'));
-  }
-  instance = new HttpTikTokClient(env.TIKTOK_ACCESS_TOKEN);
+  // getValidAccessToken() throws a clear setup message when nothing is
+  // available, and transparently refreshes expired stored tokens.
+  instance = new HttpTikTokClient(() => getValidAccessToken());
   return instance;
 }

@@ -11,7 +11,14 @@ const booleanish = z
   .optional()
   .transform((v) => {
     if (v === undefined || v.trim() === '') return undefined;
-    return ['true', '1', 'yes', 'on'].includes(v.trim().toLowerCase());
+    const s = v.trim().toLowerCase();
+    if (['true', '1', 'yes', 'on'].includes(s)) return true;
+    if (['false', '0', 'no', 'off'].includes(s)) return false;
+    // Unrecognized values (typos like "ture") resolve to undefined so the
+    // SAFE default applies — e.g. REVIEW_REQUIRED stays true.
+    // eslint-disable-next-line no-console
+    console.warn(`Unrecognized boolean env value "${v}" — using the safe default.`);
+    return undefined;
   });
 
 const numberish = (fallback: number, min = 0, max = Number.MAX_SAFE_INTEGER) =>
@@ -45,12 +52,15 @@ const envSchema = z.object({
   // ViewMax
   VIEWMAX_API_KEY: z.string().optional().default(''),
   VIEWMAX_BASE_URL: z.string().optional().default(''),
+  VIEWMAX_STYLE_PRESET: z.string().optional().default('style-bold-captions'),
+  VIEWMAX_VOICE_PRESET: z.string().optional().default('voice-alex'),
 
   // TikTok
   TIKTOK_CLIENT_KEY: z.string().optional().default(''),
   TIKTOK_CLIENT_SECRET: z.string().optional().default(''),
   TIKTOK_REDIRECT_URI: z.string().optional().default(''),
   TIKTOK_ACCESS_TOKEN: z.string().optional().default(''),
+  TIKTOK_SCOPES: z.string().optional().default('video.publish'),
 
   // Storage
   DATABASE_URL: z.string().optional().default('file:./data/app.db'),

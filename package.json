@@ -19,7 +19,9 @@
     "upload": "tsx src/index.ts upload",
     "schedule": "tsx src/index.ts schedule",
     "status": "tsx src/index.ts status",
-    "clean": "tsx src/index.ts clean"
+    "clean": "tsx src/index.ts clean",
+    "tiktok-auth": "tsx src/index.ts tiktok-auth",
+    "viewmax-catalog": "tsx src/index.ts viewmax-catalog"
   },
   "dependencies": {
     "axios": "^1.7.9",

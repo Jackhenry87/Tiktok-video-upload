@@ -1,6 +1,8 @@
 import { Command } from 'commander';
-import { env, isTikTokConfigured, isViewMaxConfigured, reviewRequired } from '../config/env';
+import { env, isViewMaxConfigured, reviewRequired } from '../config/env';
 import { getAppConfig } from '../config/appConfig';
+import { describeTikTokAuth, getStoredTokens, refreshTokens, runAuthFlow } from '../connectors/tiktok/tiktokAuth';
+import { getViewMaxClient } from '../connectors/viewmax/viewmaxClient';
 import { collectTrends } from '../trends/trendCollector';
 import { generateIdeas } from '../ideas/ideaGenerator';
 import { createBatch, createVideo, getStatusSummary } from '../videos/videoJobService';
@@ -21,10 +23,11 @@ import { logger } from '../utils/logger';
 
 function banner(): void {
   const mock = env.MOCK_MODE === true;
+  const tiktokAuth = describeTikTokAuth();
   const lines = [
     `mode: ${mock ? 'MOCK (no real API calls)' : 'auto/real'}`,
     `viewmax: ${isViewMaxConfigured() ? 'configured' : 'NOT configured'}`,
-    `tiktok: ${isTikTokConfigured() ? 'configured' : 'NOT configured'}`,
+    `tiktok: ${tiktokAuth === 'none' ? 'NOT configured' : `configured (${tiktokAuth})`}`,
     `review required: ${reviewRequired() ? 'yes' : 'NO (auto-approve!)'}`,
     `niches: ${getAppConfig().activeNiches.join(', ')}`,
   ];
@@ -324,6 +327,76 @@ export function buildProgram(): Command {
         console.log(
           `${opts.dryRun ? '[dry-run] ' : ''}Removed ${result.draftsRemoved} draft(s), ` +
             `cleaned files for ${result.jobsMarked} failed job(s).`,
+        );
+      } catch (err) {
+        fail(err);
+      }
+    });
+
+  // --------------------------------------------------------- tiktok-auth ---
+  program
+    .command('tiktok-auth')
+    .description('Authorize the app with TikTok (OAuth) and store auto-refreshing tokens')
+    .option('--code <code>', 'authorization code copied from the redirect URL')
+    .option('--status', 'show current token status')
+    .option('--refresh', 'force an access-token refresh now')
+    .action(async (opts: { code?: string; status?: boolean; refresh?: boolean }) => {
+      banner();
+      try {
+        if (opts.status) {
+          const t = getStoredTokens();
+          if (!t.accessToken && !t.refreshToken) {
+            console.log(
+              'No stored TikTok tokens.' +
+                (env.TIKTOK_ACCESS_TOKEN
+                  ? ' Using static TIKTOK_ACCESS_TOKEN from .env (expires ~24h after issue).'
+                  : ' Run: npm run tiktok-auth'),
+            );
+            return;
+          }
+          console.log(`open_id:            ${t.openId ?? '-'}`);
+          console.log(`scopes:             ${t.scope ?? '-'}`);
+          console.log(`access token until: ${t.accessExpiresAt ?? '-'}`);
+          console.log(`refresh token until:${t.refreshExpiresAt ?? '-'}`);
+          return;
+        }
+        if (opts.refresh) {
+          const t = await refreshTokens();
+          console.log(`Refreshed. Access token valid until ${t.accessExpiresAt}.`);
+          return;
+        }
+        const result = await runAuthFlow({ code: opts.code });
+        console.log(`\n${result.message}\n`);
+        if (result.authorized) {
+          console.log('TikTok is ready — uploads will use the official Content Posting API.');
+          console.log('Reminder: unaudited TikTok apps can only post SELF_ONLY (private).');
+        }
+      } catch (err) {
+        fail(err);
+      }
+    });
+
+  // ----------------------------------------------------- viewmax-catalog ---
+  program
+    .command('viewmax-catalog')
+    .description('List available ViewMax templates, voices, and styles')
+    .action(async () => {
+      banner();
+      try {
+        const client = getViewMaxClient();
+        const [templates, voices, styles] = await Promise.all([
+          client.getAvailableTemplates(),
+          client.getAvailableVoices(),
+          client.getAvailableStyles(),
+        ]);
+        console.log('Templates:');
+        for (const t of templates) console.log(`  ${t.id.padEnd(22)} ${t.name} — ${t.description}`);
+        console.log('\nVoices:');
+        for (const v of voices) console.log(`  ${v.id.padEnd(22)} ${v.name} (${v.language}, ${v.style})`);
+        console.log('\nStyles:');
+        for (const s of styles) console.log(`  ${s.id.padEnd(22)} ${s.name} — ${s.description}`);
+        console.log(
+          '\nSet VIEWMAX_STYLE_PRESET / VIEWMAX_VOICE_PRESET in .env to change what videos use.',
         );
       } catch (err) {
         fail(err);

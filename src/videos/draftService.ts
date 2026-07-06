@@ -11,8 +11,10 @@ import {
   updateIdeaStatus,
   listVideoJobs,
   getUploadForDraft,
+  updateUpload,
 } from '../db/database';
 import { audit, logger } from '../utils/logger';
+import { checkClaims, cleanHashtags, ensureDisclaimer, sanitizeText } from '../utils/validators';
 import { draftMetadataPath, removeFileIfExists, writeJson } from '../utils/fileStorage';
 import { previewNextSlot } from '../uploads/scheduleService';
 import { generateThumbnail } from './thumbnailService';
@@ -34,14 +36,12 @@ export async function createDraftFromJob(videoJobId: number): Promise<number> {
   if (!idea) throw new Error(`Idea ${job.ideaId} not found`);
   const trend = getTrend(idea.trendId);
 
-  const thumbnailPath = await generateThumbnail(job.videoPath, videoJobId, idea.hook);
   const suggestedPostTime = previewNextSlot();
 
   const draft: Draft = {
     videoJobId,
     ideaId: idea.id!,
     videoPath: job.videoPath,
-    thumbnailPath,
     script: idea.script,
     caption: idea.caption,
     hashtags: idea.hashtags,
@@ -53,6 +53,11 @@ export async function createDraftFromJob(videoJobId: number): Promise<number> {
     status: 'pending',
   };
   const draftId = insertDraft(draft);
+
+  // Thumbnail is keyed by the draft id, so generate it after the insert.
+  const thumbnailPath = await generateThumbnail(job.videoPath, draftId, idea.hook);
+  updateDraft(draftId, { thumbnailPath });
+  draft.thumbnailPath = thumbnailPath;
 
   // Export a JSON copy for easy inspection outside the CLI.
   await writeJson(draftMetadataPath(draftId), {
@@ -87,8 +92,17 @@ export function rejectDraft(id: number, note?: string): Draft {
     throw new Error(`Draft ${id} was already uploaded and cannot be rejected.`);
   }
   updateDraft(id, { status: 'rejected', reviewNote: note });
+  releaseScheduledSlot(id);
   audit('info', 'Draft rejected', { draftId: id, note });
   return mustGet(id);
+}
+
+/** Free the daily-cap slot held by a draft that will no longer upload. */
+function releaseScheduledSlot(draftId: number): void {
+  const upload = getUploadForDraft(draftId);
+  if (upload && (upload.status === 'scheduled' || upload.status === 'failed')) {
+    updateUpload(upload.id!, { status: 'skipped', error: 'draft rejected/regenerating' });
+  }
 }
 
 /**
@@ -101,6 +115,7 @@ export function regenerateDraft(id: number, note?: string): Draft {
     throw new Error(`Draft ${id} was already uploaded and cannot be regenerated.`);
   }
   updateDraft(id, { status: 'regenerating', reviewNote: note ?? 'regenerate requested' });
+  releaseScheduledSlot(id);
   updateIdeaStatus(draft.ideaId, 'ready');
   audit('info', 'Draft flagged for regeneration; idea re-opened', { draftId: id });
   return mustGet(id);
@@ -114,7 +129,44 @@ export function editDraft(
   if (draft.status === 'uploaded') {
     throw new Error(`Draft ${id} was already uploaded and cannot be edited.`);
   }
-  updateDraft(id, { caption: patch.caption, hashtags: patch.hashtags });
+
+  // Edits go through the same compliance pipeline as generated content:
+  // banned phrases sanitized, disclaimer re-applied, hard claims rejected,
+  // hashtags cleaned/capped.
+  const idea = getIdea(draft.ideaId);
+  const niche = idea?.niche ?? '';
+
+  let caption = patch.caption;
+  if (caption !== undefined) {
+    const pass = sanitizeText(caption);
+    caption = ensureDisclaimer(pass.text, niche).caption;
+    const claims = checkClaims(caption);
+    if (claims.length) {
+      throw new Error(
+        `Edited caption blocked by compliance: ${claims.map((i) => i.detail).join('; ')}`,
+      );
+    }
+    if (pass.issues.length) {
+      audit('warn', 'Edited caption sanitized', {
+        draftId: id,
+        issues: pass.issues.map((i) => i.detail),
+      });
+    }
+  }
+
+  let hashtags = patch.hashtags;
+  if (hashtags !== undefined) {
+    const cleaned = cleanHashtags(hashtags);
+    hashtags = cleaned.hashtags;
+    if (cleaned.issues.length) {
+      audit('warn', 'Edited hashtags cleaned', {
+        draftId: id,
+        issues: cleaned.issues.map((i) => i.detail),
+      });
+    }
+  }
+
+  updateDraft(id, { caption, hashtags });
   audit('info', 'Draft edited', { draftId: id, fields: Object.keys(patch) });
   return mustGet(id);
 }

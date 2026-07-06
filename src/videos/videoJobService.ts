@@ -9,6 +9,7 @@ import {
   countRows,
   getIdea,
   getVideoJob,
+  ideaHasActiveVideoJob,
   insertVideoJob,
   listDrafts,
   listIdeas,
@@ -50,8 +51,10 @@ export function buildViewMaxRequest(idea: VideoIdea): ViewMaxVideoRequest {
     format: rules.format,
     resolution: rules.resolution,
     durationTargetSec: idea.estimatedDurationSec,
-    stylePreset: 'style-bold-captions',
-    voicePreset: 'voice-alex',
+    // Discover valid ids with `npm run viewmax-catalog`, then set
+    // VIEWMAX_STYLE_PRESET / VIEWMAX_VOICE_PRESET in .env.
+    stylePreset: env.VIEWMAX_STYLE_PRESET,
+    voicePreset: env.VIEWMAX_VOICE_PRESET,
     backgroundMusic: { enabled: true, mood: idea.musicGuidance },
     captionsEnabled: rules.captionsEnabled,
     branding: {},
@@ -136,8 +139,11 @@ export async function runJob(jobId: number): Promise<void> {
 /** Create a video for the next best 'ready' idea (or a specific one). */
 export async function createVideo(ideaId?: number): Promise<number | undefined> {
   if (ideaId) return processIdea(ideaId);
-  const ready = listIdeas({ status: 'ready', limit: 1 });
-  const idea = ready[0];
+  // Skip ideas that already have a queued/in-flight job (e.g. from a
+  // crashed batch) — those belong to create-batch's resume path.
+  const idea = listIdeas({ status: 'ready', limit: 50 }).find(
+    (i) => !ideaHasActiveVideoJob(i.id!),
+  );
   if (!idea) {
     logger.warn('No ideas ready for video creation. Run "npm run ideas" first.');
     return undefined;
@@ -157,11 +163,15 @@ export async function createBatch(count: number, concurrency = 2): Promise<{
 }> {
   await ensureStorageDirs();
   const resumed = listVideoJobs({ status: 'queued' });
-  const ideas = listIdeas({ status: 'ready', limit: count });
 
+  // Enqueue up to `count` NEW jobs, skipping ideas that already have an
+  // active job (including the ones we're about to resume) so a resumed
+  // batch never produces duplicate videos for the same idea.
   const jobIds: number[] = resumed.map((j) => j.id!);
-  for (const idea of ideas) {
-    if (jobIds.length >= Math.max(count, resumed.length)) break;
+  let enqueued = 0;
+  for (const idea of listIdeas({ status: 'ready', limit: count * 3 })) {
+    if (enqueued >= count) break;
+    if (ideaHasActiveVideoJob(idea.id!)) continue;
     const request = buildViewMaxRequest(idea);
     jobIds.push(
       insertVideoJob({
@@ -170,6 +180,7 @@ export async function createBatch(count: number, concurrency = 2): Promise<{
         requestPayload: JSON.stringify(request),
       }),
     );
+    enqueued += 1;
   }
 
   if (!jobIds.length) {
@@ -199,7 +210,7 @@ export interface StatusSummary {
 
 export function getStatusSummary(): StatusSummary {
   const tables: Record<string, number> = {};
-  for (const t of ['trends', 'ideas', 'video_jobs', 'drafts', 'uploads', 'logs']) {
+  for (const t of ['trends', 'ideas', 'video_jobs', 'drafts', 'uploads', 'settings', 'logs']) {
     tables[t] = countRows(t);
   }
   const jobs = listVideoJobs({ limit: 10 });
