@@ -72,7 +72,12 @@ export interface TikTokInitResponse {
 }
 
 export interface TikTokConnector {
-  /** Full upload flow: init -> chunked PUT -> return publish handle. */
+  /** Direct post: init -> chunked PUT -> publish handle. */
   uploadVideo(params: TikTokUploadParams): Promise<TikTokUploadResult>;
+  /**
+   * Inbox upload: the video lands in the user's TikTok app drafts; the user
+   * finishes the post in-app (public distribution, no app audit needed).
+   */
+  uploadToInbox(videoFilePath: string): Promise<TikTokUploadResult>;
   checkPublishStatus(publishId: string): Promise<TikTokPublishStatus>;
 }

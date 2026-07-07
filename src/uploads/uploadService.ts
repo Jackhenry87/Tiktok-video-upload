@@ -35,6 +35,11 @@ export async function uploadApprovedDrafts(opts: {
   draftId?: number;
   /** Upload even if the scheduled slot hasn't arrived yet. */
   now?: boolean;
+  /**
+   * Inbox mode: send to the user's TikTok app drafts for one-tap public
+   * posting (no app audit required). Caption/hashtags are added in-app.
+   */
+  inbox?: boolean;
 } = {}): Promise<UploadRunResult> {
   const result: UploadRunResult = { uploaded: [], skipped: [], failed: [] };
   const config = getAppConfig();
@@ -164,12 +169,14 @@ export async function uploadApprovedDrafts(opts: {
           issues: finalTags.issues.map((i) => i.detail),
         });
       }
-      const uploadResult = await client.uploadVideo({
-        videoFilePath: draft.videoPath,
-        caption: draft.caption,
-        hashtags: finalTags.hashtags,
-        privacyStatus: env.DEFAULT_PRIVACY_STATUS,
-      });
+      const uploadResult = opts.inbox
+        ? await client.uploadToInbox(draft.videoPath)
+        : await client.uploadVideo({
+            videoFilePath: draft.videoPath,
+            caption: draft.caption,
+            hashtags: finalTags.hashtags,
+            privacyStatus: env.DEFAULT_PRIVACY_STATUS,
+          });
 
       updateUpload(uploadId, {
         status: 'uploaded',

@@ -63,6 +63,95 @@ export class HttpTikTokClient implements TikTokConnector {
     return `${caption} ${tags}`.trim().slice(0, 2200);
   }
 
+  /** Shared chunked PUT of the video bytes to TikTok's upload_url. */
+  private async putVideoBytes(
+    videoFilePath: string,
+    uploadUrl: string,
+    videoSize: number,
+    chunkSize: number,
+    totalChunks: number,
+  ): Promise<void> {
+    const buffer = await fs.readFile(videoFilePath);
+    for (let chunk = 0; chunk < totalChunks; chunk += 1) {
+      const start = chunk * chunkSize;
+      const end = chunk === totalChunks - 1 ? videoSize - 1 : start + chunkSize - 1;
+      const slice = buffer.subarray(start, end + 1);
+      await withRetry(
+        async () => {
+          try {
+            await axios.put(uploadUrl, slice, {
+              headers: {
+                'Content-Type': 'video/mp4',
+                'Content-Length': String(slice.length),
+                'Content-Range': `bytes ${start}-${end}/${videoSize}`,
+              },
+              timeout: 5 * 60_000,
+              maxBodyLength: Infinity,
+            });
+          } catch (err) {
+            HttpTikTokClient.rethrow(err, `upload chunk ${chunk + 1}/${totalChunks}`);
+          }
+        },
+        { label: `TikTok upload chunk ${chunk + 1}/${totalChunks}` },
+      );
+    }
+  }
+
+  /**
+   * Inbox upload (video.upload scope): sends the video to the user's TikTok
+   * app inbox/drafts; they finish and publish it in-app. Works without app
+   * audit and results in a normal, fully-distributed post.
+   */
+  async uploadToInbox(videoFilePath: string): Promise<TikTokUploadResult> {
+    const stat = await fs.stat(videoFilePath);
+    const videoSize = stat.size;
+    const useSingleChunk = videoSize <= MAX_SINGLE_CHUNK;
+    const chunkSize = useSingleChunk ? videoSize : CHUNK_SIZE;
+    const totalChunks = useSingleChunk ? 1 : Math.floor(videoSize / chunkSize);
+
+    const init = await withRetry(
+      async () => {
+        try {
+          const res = await axios.post<TikTokInitResponse>(
+            `${TIKTOK_API_BASE}/v2/post/publish/inbox/video/init/`,
+            {
+              source_info: {
+                source: 'FILE_UPLOAD',
+                video_size: videoSize,
+                chunk_size: chunkSize,
+                total_chunk_count: totalChunks,
+              },
+            },
+            { headers: await this.authHeaders(), timeout: 30_000 },
+          );
+          if (res.data.error?.code && res.data.error.code !== 'ok') {
+            throw new NonRetryableError(
+              `TikTok inbox init error: ${res.data.error.code} ${res.data.error.message}`,
+            );
+          }
+          return res.data.data;
+        } catch (err) {
+          HttpTikTokClient.rethrow(err, 'inbox init');
+        }
+      },
+      { label: 'TikTok inbox init' },
+    );
+
+    await this.putVideoBytes(videoFilePath, init.upload_url, videoSize, chunkSize, totalChunks);
+    logger.info(`TikTok inbox upload sent: publish_id=${init.publish_id}`);
+
+    let last: TikTokPublishStatus = { publishId: init.publish_id, status: 'PROCESSING_UPLOAD' };
+    for (let i = 0; i < 8; i += 1) {
+      last = await this.checkPublishStatus(init.publish_id);
+      if (last.status !== 'PROCESSING_UPLOAD') break;
+      await sleep(5_000);
+    }
+    if (last.status === 'FAILED') {
+      throw new Error(`TikTok inbox upload failed: ${last.failReason ?? 'unknown reason'}`);
+    }
+    return { publishId: init.publish_id, status: last.status };
+  }
+
   async uploadVideo(params: TikTokUploadParams): Promise<TikTokUploadResult> {
     const stat = await fs.stat(params.videoFilePath);
     const videoSize = stat.size;
@@ -110,31 +199,7 @@ export class HttpTikTokClient implements TikTokConnector {
     );
 
     // Step 2: upload the file bytes with Content-Range headers.
-    const buffer = await fs.readFile(params.videoFilePath);
-    for (let chunk = 0; chunk < totalChunks; chunk += 1) {
-      const start = chunk * chunkSize;
-      // The last chunk absorbs the remainder.
-      const end = chunk === totalChunks - 1 ? videoSize - 1 : start + chunkSize - 1;
-      const slice = buffer.subarray(start, end + 1);
-      await withRetry(
-        async () => {
-          try {
-            await axios.put(init.upload_url, slice, {
-              headers: {
-                'Content-Type': 'video/mp4',
-                'Content-Length': String(slice.length),
-                'Content-Range': `bytes ${start}-${end}/${videoSize}`,
-              },
-              timeout: 5 * 60_000,
-              maxBodyLength: Infinity,
-            });
-          } catch (err) {
-            HttpTikTokClient.rethrow(err, `upload chunk ${chunk + 1}/${totalChunks}`);
-          }
-        },
-        { label: `TikTok upload chunk ${chunk + 1}/${totalChunks}` },
-      );
-    }
+    await this.putVideoBytes(params.videoFilePath, init.upload_url, videoSize, chunkSize, totalChunks);
 
     logger.info(`TikTok upload initialized: publish_id=${init.publish_id}`);
 
@@ -187,6 +252,12 @@ export class HttpTikTokClient implements TikTokConnector {
 
 export class MockTikTokClient implements TikTokConnector {
   private counter = 0;
+
+  async uploadToInbox(videoFilePath: string): Promise<TikTokUploadResult> {
+    this.counter += 1;
+    logger.info(`[mock] TikTok inbox upload — would send ${videoFilePath} to the user's app drafts`);
+    return { publishId: `mock-inbox-${this.counter}`, status: 'SEND_TO_USER_INBOX' };
+  }
 
   async uploadVideo(params: TikTokUploadParams): Promise<TikTokUploadResult> {
     this.counter += 1;

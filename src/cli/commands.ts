@@ -236,8 +236,9 @@ export function buildProgram(): Command {
     .description('Upload approved drafts to TikTok (due scheduled ones + unscheduled)')
     .option('-d, --draft <id>', 'upload a specific approved draft')
     .option('--now', 'ignore scheduled times and upload immediately')
+    .option('--inbox', "send to the user's TikTok app drafts (one-tap public posting)")
     .option('--retry-failed', 'retry previously failed uploads')
-    .action(async (opts: { draft?: string; now?: boolean; retryFailed?: boolean }) => {
+    .action(async (opts: { draft?: string; now?: boolean; inbox?: boolean; retryFailed?: boolean }) => {
       banner();
       try {
         const result = opts.retryFailed
@@ -245,7 +246,11 @@ export function buildProgram(): Command {
           : await uploadApprovedDrafts({
               draftId: opts.draft ? parseId(opts.draft, 'draft') : undefined,
               now: Boolean(opts.now),
+              inbox: Boolean(opts.inbox),
             });
+        if (opts.inbox && result.uploaded.length) {
+          console.log('\nOpen the TikTok app → notifications/inbox → finish each post there.');
+        }
         for (const u of result.uploaded) {
           console.log(
             `✔ Draft #${u.draftId} uploaded — publish_id=${u.publishId}` +
