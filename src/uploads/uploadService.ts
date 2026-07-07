@@ -1,5 +1,6 @@
 import fs from 'fs-extra';
-import { env, reviewRequired, tikTokMode } from '../config/env';
+import { env, resolveMode, reviewRequired } from '../config/env';
+import { hasTikTokAuth } from '../connectors/tiktok/tiktokAuth';
 import { getAppConfig } from '../config/appConfig';
 import { getTikTokClient } from '../connectors/tiktok/tiktokClient';
 import {
@@ -187,7 +188,8 @@ export async function uploadApprovedDrafts(opts: {
         draftId,
         publishId: uploadResult.publishId,
         videoId: uploadResult.videoId,
-        mode: tikTokMode(),
+        // Stored OAuth tokens count as configured, same as getTikTokClient().
+        mode: resolveMode(hasTikTokAuth()),
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
