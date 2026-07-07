@@ -77,7 +77,8 @@ export interface TikTokConnector {
   /**
    * Inbox upload: the video lands in the user's TikTok app drafts; the user
    * finishes the post in-app (public distribution, no app audit needed).
+   * `title` pre-fills the caption when TikTok honors it.
    */
-  uploadToInbox(videoFilePath: string): Promise<TikTokUploadResult>;
+  uploadToInbox(videoFilePath: string, title?: string): Promise<TikTokUploadResult>;
   checkPublishStatus(publishId: string): Promise<TikTokPublishStatus>;
 }

@@ -2,7 +2,7 @@ import fs from 'fs-extra';
 import { env, resolveMode, reviewRequired } from '../config/env';
 import { hasTikTokAuth } from '../connectors/tiktok/tiktokAuth';
 import { getAppConfig } from '../config/appConfig';
-import { getTikTokClient } from '../connectors/tiktok/tiktokClient';
+import { getTikTokClient, HttpTikTokClient } from '../connectors/tiktok/tiktokClient';
 import {
   getIdea,
   getUploadForDraft,
@@ -170,7 +170,10 @@ export async function uploadApprovedDrafts(opts: {
         });
       }
       const uploadResult = opts.inbox
-        ? await client.uploadToInbox(draft.videoPath)
+        ? await client.uploadToInbox(
+            draft.videoPath,
+            HttpTikTokClient.buildTitle(draft.caption, finalTags.hashtags),
+          )
         : await client.uploadVideo({
             videoFilePath: draft.videoPath,
             caption: draft.caption,

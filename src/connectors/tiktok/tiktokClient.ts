@@ -102,7 +102,7 @@ export class HttpTikTokClient implements TikTokConnector {
    * app inbox/drafts; they finish and publish it in-app. Works without app
    * audit and results in a normal, fully-distributed post.
    */
-  async uploadToInbox(videoFilePath: string): Promise<TikTokUploadResult> {
+  async uploadToInbox(videoFilePath: string, title?: string): Promise<TikTokUploadResult> {
     const stat = await fs.stat(videoFilePath);
     const videoSize = stat.size;
     const useSingleChunk = videoSize <= MAX_SINGLE_CHUNK;
@@ -115,6 +115,9 @@ export class HttpTikTokClient implements TikTokConnector {
           const res = await axios.post<TikTokInitResponse>(
             `${TIKTOK_API_BASE}/v2/post/publish/inbox/video/init/`,
             {
+              // Undocumented but accepted: pre-fills the caption in the
+              // user's draft editor when TikTok honors it.
+              ...(title ? { post_info: { title: title.slice(0, 2200) } } : {}),
               source_info: {
                 source: 'FILE_UPLOAD',
                 video_size: videoSize,
@@ -253,9 +256,12 @@ export class HttpTikTokClient implements TikTokConnector {
 export class MockTikTokClient implements TikTokConnector {
   private counter = 0;
 
-  async uploadToInbox(videoFilePath: string): Promise<TikTokUploadResult> {
+  async uploadToInbox(videoFilePath: string, title?: string): Promise<TikTokUploadResult> {
     this.counter += 1;
-    logger.info(`[mock] TikTok inbox upload — would send ${videoFilePath} to the user's app drafts`);
+    logger.info(
+      `[mock] TikTok inbox upload — would send ${videoFilePath} to the user's app drafts` +
+        (title ? ` (caption: ${title.slice(0, 60)}…)` : ''),
+    );
     return { publishId: `mock-inbox-${this.counter}`, status: 'SEND_TO_USER_INBOX' };
   }
 
