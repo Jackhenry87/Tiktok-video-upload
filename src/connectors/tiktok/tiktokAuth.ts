@@ -32,6 +32,7 @@ const KEYS = {
   openId: 'tiktok.open_id',
   scope: 'tiktok.scope',
   pendingState: 'tiktok.pending_state',
+  pendingVerifier: 'tiktok.pending_verifier',
 } as const;
 
 export interface StoredTikTokTokens {
@@ -100,7 +101,7 @@ export function hasTikTokAuth(): boolean {
   return describeTikTokAuth() !== 'none';
 }
 
-export function buildAuthUrl(state: string): string {
+export function buildAuthUrl(state: string, codeChallenge?: string): string {
   if (!env.TIKTOK_CLIENT_KEY || !env.TIKTOK_REDIRECT_URI) {
     throw new Error(
       'TIKTOK_CLIENT_KEY and TIKTOK_REDIRECT_URI must be set in .env first.\n' +
@@ -115,7 +116,25 @@ export function buildAuthUrl(state: string): string {
     redirect_uri: env.TIKTOK_REDIRECT_URI,
     state,
   });
+  if (codeChallenge) {
+    params.set('code_challenge', codeChallenge);
+    params.set('code_challenge_method', 'S256');
+  }
   return `${AUTHORIZE_URL}?${params.toString()}`;
+}
+
+/**
+ * Start an authorization attempt: generates state + PKCE verifier (TikTok
+ * requires code_challenge; note their challenge is HEX-encoded SHA-256, not
+ * RFC 7636 base64url), persists both, and returns the URL to open.
+ */
+export function beginAuth(): { url: string; state: string } {
+  const state = crypto.randomBytes(16).toString('hex');
+  const verifier = crypto.randomBytes(32).toString('hex');
+  setSetting(KEYS.pendingState, state);
+  setSetting(KEYS.pendingVerifier, verifier);
+  const challenge = crypto.createHash('sha256').update(verifier).digest('hex');
+  return { url: buildAuthUrl(state, challenge), state };
 }
 
 async function postToken(body: URLSearchParams): Promise<TokenResponse> {
@@ -150,6 +169,8 @@ export async function exchangeCode(code: string): Promise<StoredTikTokTokens> {
     grant_type: 'authorization_code',
     redirect_uri: env.TIKTOK_REDIRECT_URI,
   });
+  const verifier = getSetting(KEYS.pendingVerifier);
+  if (verifier) body.set('code_verifier', verifier);
   const tokens = await postToken(body);
   saveTokens(tokens);
   return getStoredTokens();
@@ -238,9 +259,7 @@ export async function runAuthFlow(opts: { code?: string } = {}): Promise<AuthFlo
     };
   }
 
-  const state = crypto.randomBytes(16).toString('hex');
-  setSetting(KEYS.pendingState, state);
-  const authUrl = buildAuthUrl(state);
+  const { url: authUrl, state } = beginAuth();
 
   let redirect: URL | undefined;
   try {
