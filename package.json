@@ -20,6 +20,7 @@
     "schedule": "tsx src/index.ts schedule",
     "status": "tsx src/index.ts status",
     "clean": "tsx src/index.ts clean",
+    "create-story": "tsx src/index.ts create-story",
     "tiktok-auth": "tsx src/index.ts tiktok-auth",
     "viewmax-catalog": "tsx src/index.ts viewmax-catalog"
   },

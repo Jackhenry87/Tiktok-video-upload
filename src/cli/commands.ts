@@ -349,6 +349,45 @@ export function buildProgram(): Command {
       }
     });
 
+  // -------------------------------------------------------- create-story ---
+  program
+    .command('create-story')
+    .description('Render an original narrated story video (word-pop captions over gameplay/background)')
+    .option('--file <path>', 'JSON file: {title, story, caption, hashtags[]} or an array of them')
+    .option('--title <text>', 'story title')
+    .option('--text <text>', 'full narration text (hook first)')
+    .option('--caption <text>', 'post caption')
+    .option('--hashtags <list>', 'comma-separated hashtags', 'storytime,fyp')
+    .option('--background <path>', 'specific background clip (defaults to assets/backgrounds/ random)')
+    .action(async (opts: Record<string, string | undefined>) => {
+      banner();
+      try {
+        const { createStoryDraft } = await import('../videos/storyService');
+        const fs = (await import('fs-extra')).default;
+        let stories: { title: string; story: string; caption: string; hashtags: string[]; background?: string }[];
+        if (opts.file) {
+          const data = await fs.readJson(opts.file);
+          stories = Array.isArray(data) ? data : [data];
+        } else {
+          if (!opts.title || !opts.text) throw new Error('need --file, or --title and --text');
+          stories = [{
+            title: opts.title,
+            story: opts.text,
+            caption: opts.caption ?? opts.title,
+            hashtags: (opts.hashtags ?? 'storytime').split(',').map((h) => h.trim()).filter(Boolean),
+            background: opts.background,
+          }];
+        }
+        for (const s of stories) {
+          const result = await createStoryDraft(s);
+          console.log(`✔ Story draft #${result.draftId} rendered (${result.durationHint}) — "${s.title}"`);
+        }
+        console.log('\nNext: npm run review');
+      } catch (err) {
+        fail(err);
+      }
+    });
+
   // --------------------------------------------------------- tiktok-auth ---
   program
     .command('tiktok-auth')

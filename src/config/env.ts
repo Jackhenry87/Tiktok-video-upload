@@ -55,6 +55,15 @@ const envSchema = z.object({
   VIEWMAX_STYLE_PRESET: z.string().optional().default('style-bold-captions'),
   VIEWMAX_VOICE_PRESET: z.string().optional().default('voice-alex'),
 
+  // Video engine: 'auto' | 'local' (built-in ffmpeg) | 'viewmax'
+  VIDEO_ENGINE: z
+    .string()
+    .optional()
+    .default('auto')
+    .transform((v) => (['local', 'viewmax'].includes(v.trim().toLowerCase()) ? v.trim().toLowerCase() : 'auto')),
+  // Licensed stock b-roll (free key: https://www.pexels.com/api/)
+  PEXELS_API_KEY: z.string().optional().default(''),
+
   // TikTok
   TIKTOK_CLIENT_KEY: z.string().optional().default(''),
   TIKTOK_CLIENT_SECRET: z.string().optional().default(''),

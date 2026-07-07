@@ -244,23 +244,44 @@ export class MockViewMaxClient implements ViewMaxConnector {
 let instance: ViewMaxConnector | undefined;
 
 /**
- * Returns the ViewMax connector for the current runtime mode.
- * Throws a descriptive setup error only when MOCK_MODE=false and credentials
- * are missing — callers surface the message instead of crashing.
+ * Video engine selection:
+ *   MOCK_MODE=true          -> mock (placeholder files, no real render)
+ *   VIDEO_ENGINE=viewmax    -> ViewMax HTTP API (errors if unconfigured)
+ *   VIDEO_ENGINE=local      -> built-in ffmpeg renderer
+ *   auto (default)          -> ViewMax when configured, else the built-in
+ *                              ffmpeg renderer, else mock
  */
 export function getViewMaxClient(): ViewMaxConnector {
   if (instance) return instance;
-  const mode = viewMaxMode();
-  if (mode === 'mock') {
-    if (env.MOCK_MODE !== true) {
-      logger.warn('ViewMax credentials not set — using mock ViewMax client. ' + 'Set VIEWMAX_API_KEY and VIEWMAX_BASE_URL for real video generation.');
-    }
+
+  // Lazy require avoids a circular import (renderer -> types only).
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { LocalRendererClient } = require('./localRendererClient') as typeof import('./localRendererClient');
+
+  if (env.MOCK_MODE === true) {
     instance = new MockViewMaxClient();
     return instance;
   }
-  if (!env.VIEWMAX_API_KEY || !env.VIEWMAX_BASE_URL) {
-    throw new Error(setupMessage('viewmax'));
+  if (env.VIDEO_ENGINE === 'local') {
+    if (!LocalRendererClient.available()) {
+      throw new Error('VIDEO_ENGINE=local requires ffmpeg on PATH.');
+    }
+    instance = new LocalRendererClient();
+    return instance;
   }
-  instance = new HttpViewMaxClient(env.VIEWMAX_BASE_URL, env.VIEWMAX_API_KEY);
+  if (env.VIDEO_ENGINE === 'viewmax' || viewMaxMode() === 'real') {
+    if (!env.VIEWMAX_API_KEY || !env.VIEWMAX_BASE_URL) {
+      throw new Error(setupMessage('viewmax'));
+    }
+    instance = new HttpViewMaxClient(env.VIEWMAX_BASE_URL, env.VIEWMAX_API_KEY);
+    return instance;
+  }
+  if (LocalRendererClient.available()) {
+    logger.info('Using the built-in ffmpeg video engine (no ViewMax credentials set).');
+    instance = new LocalRendererClient();
+    return instance;
+  }
+  logger.warn('No video engine available (no ViewMax creds, no ffmpeg) — using mock client.');
+  instance = new MockViewMaxClient();
   return instance;
 }

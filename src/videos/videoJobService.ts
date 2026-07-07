@@ -31,6 +31,18 @@ import { createDraftFromJob } from './draftService';
  * queue: rows left in 'queued' after a crash are picked up on the next run.
  */
 
+/** Brand color per niche — drives the renderer's background palette. */
+const NICHE_BRAND_COLORS: Record<string, string> = {
+  finance: '#312e81',
+  'sports betting': '#b91c1c',
+  'side hustles': '#065f46',
+  'real estate': '#7c2d12',
+  'ai tools': '#0e7490',
+  'college life': '#9d174d',
+  fitness: '#b91c1c',
+  'local business marketing': '#065f46',
+};
+
 export function buildViewMaxRequest(idea: VideoIdea): ViewMaxVideoRequest {
   const rules = getAppConfig().videoRules;
   const scenes: ViewMaxScene[] = idea.scenes.map((s) => ({
@@ -57,7 +69,7 @@ export function buildViewMaxRequest(idea: VideoIdea): ViewMaxVideoRequest {
     voicePreset: env.VIEWMAX_VOICE_PRESET,
     backgroundMusic: { enabled: true, mood: idea.musicGuidance },
     captionsEnabled: rules.captionsEnabled,
-    branding: {},
+    branding: { primaryColor: NICHE_BRAND_COLORS[idea.niche.toLowerCase()] },
     watermark: { enabled: false },
     outputFormat: 'mp4',
   };
@@ -139,13 +151,18 @@ export async function runJob(jobId: number): Promise<void> {
   }
 }
 
+/** An idea must have real content before it becomes a video. */
+export function ideaIsRenderable(idea: VideoIdea): boolean {
+  return idea.scenes.length >= 3 && idea.caption.trim().length > 0 && idea.title.trim().length > 2;
+}
+
 /** Create a video for the next best 'ready' idea (or a specific one). */
 export async function createVideo(ideaId?: number): Promise<number | undefined> {
   if (ideaId) return processIdea(ideaId);
   // Skip ideas that already have a queued/in-flight job (e.g. from a
-  // crashed batch) — those belong to create-batch's resume path.
+  // crashed batch) and ideas without renderable content.
   const idea = listIdeas({ status: 'ready', limit: 50 }).find(
-    (i) => !ideaHasActiveVideoJob(i.id!),
+    (i) => ideaIsRenderable(i) && !ideaHasActiveVideoJob(i.id!),
   );
   if (!idea) {
     logger.warn('No ideas ready for video creation. Run "npm run ideas" first.');
@@ -174,7 +191,7 @@ export async function createBatch(count: number, concurrency = 2): Promise<{
   let enqueued = 0;
   for (const idea of listIdeas({ status: 'ready', limit: count * 3 })) {
     if (enqueued >= count) break;
-    if (ideaHasActiveVideoJob(idea.id!)) continue;
+    if (!ideaIsRenderable(idea) || ideaHasActiveVideoJob(idea.id!)) continue;
     const request = buildViewMaxRequest(idea);
     jobIds.push(
       insertVideoJob({
