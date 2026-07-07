@@ -212,8 +212,17 @@ export async function renderStoryVideo(input: StoryRenderInput): Promise<string>
     const background = input.backgroundPath ?? (await pickBackgroundClip());
     if (background) {
       const bgDur = probeDuration(background);
-      const maxStart = Math.max(0, bgDur - totalDur - 1);
-      const start = maxStart > 0 ? Math.random() * maxStart : 0;
+      // Skip the head/tail of the clip (menus, loading screens, ad/phone
+      // moments usually live at the very start/end) and pull a random
+      // window from the gameplay-dense middle. Game audio is never mapped,
+      // so in-game radio/ads never reach the video.
+      const HEAD_TRIM = 20;
+      const TAIL_TRIM = 20;
+      const usableStart = Math.min(HEAD_TRIM, Math.max(0, bgDur - totalDur - 1));
+      const usableEnd = Math.max(usableStart, bgDur - totalDur - TAIL_TRIM);
+      const start = usableEnd > usableStart
+        ? usableStart + Math.random() * (usableEnd - usableStart)
+        : Math.max(0, (bgDur - totalDur) / 2);
       await runFfmpeg(
         [
           '-ss', start.toFixed(2), '-stream_loop', '-1', '-i', background,
