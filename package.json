@@ -23,7 +23,8 @@
     "create-story": "tsx src/index.ts create-story",
     "tiktok-auth": "tsx src/index.ts tiktok-auth",
     "viewmax-catalog": "tsx src/index.ts viewmax-catalog",
-    "x-trends": "tsx src/index.ts x-trends"
+    "x-trends": "tsx src/index.ts x-trends",
+    "go-live": "tsx src/index.ts go-live"
   },
   "dependencies": {
     "axios": "^1.7.9",

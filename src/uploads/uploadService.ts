@@ -36,13 +36,17 @@ export async function uploadApprovedDrafts(opts: {
   /** Upload even if the scheduled slot hasn't arrived yet. */
   now?: boolean;
   /**
-   * Inbox mode: send to the user's TikTok app drafts for one-tap public
-   * posting (no app audit required). Caption/hashtags are added in-app.
+   * Inbox mode: send to the user's TikTok app drafts for one-tap posting
+   * (no app audit required; TikTok strips the caption). When undefined,
+   * falls back to POST_MODE (env): 'inbox' or 'direct'. Direct mode
+   * auto-posts WITH the caption but needs an approved app.
    */
   inbox?: boolean;
 } = {}): Promise<UploadRunResult> {
   const result: UploadRunResult = { uploaded: [], skipped: [], failed: [] };
   const config = getAppConfig();
+  // Explicit --inbox/--direct flag wins; otherwise POST_MODE decides.
+  const useInbox = opts.inbox ?? env.POST_MODE !== 'direct';
 
   let candidates: Draft[];
   if (opts.draftId) {
@@ -169,7 +173,7 @@ export async function uploadApprovedDrafts(opts: {
           issues: finalTags.issues.map((i) => i.detail),
         });
       }
-      const uploadResult = opts.inbox
+      const uploadResult = useInbox
         ? await client.uploadToInbox(
             draft.videoPath,
             HttpTikTokClient.buildTitle(draft.caption, finalTags.hashtags),

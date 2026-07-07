@@ -28,6 +28,7 @@ function banner(): void {
     `mode: ${mock ? 'MOCK (no real API calls)' : 'auto/real'}`,
     `viewmax: ${isViewMaxConfigured() ? 'configured' : 'NOT configured'}`,
     `tiktok: ${tiktokAuth === 'none' ? 'NOT configured' : `configured (${tiktokAuth})`}`,
+    `post mode: ${env.POST_MODE === 'direct' ? `DIRECT (auto-post, ${env.DEFAULT_PRIVACY_STATUS})` : 'inbox (tap to post)'}`,
     `review required: ${reviewRequired() ? 'yes' : 'NO (auto-approve!)'}`,
     `niches: ${getAppConfig().activeNiches.join(', ')}`,
   ];
@@ -236,19 +237,24 @@ export function buildProgram(): Command {
     .description('Upload approved drafts to TikTok (due scheduled ones + unscheduled)')
     .option('-d, --draft <id>', 'upload a specific approved draft')
     .option('--now', 'ignore scheduled times and upload immediately')
-    .option('--inbox', "send to the user's TikTok app drafts (one-tap public posting)")
+    .option('--inbox', "force inbox mode (send to TikTok app drafts, you tap Post)")
+    .option('--direct', 'force direct post (auto-post with caption; needs approved app)')
     .option('--retry-failed', 'retry previously failed uploads')
-    .action(async (opts: { draft?: string; now?: boolean; inbox?: boolean; retryFailed?: boolean }) => {
+    .action(async (opts: { draft?: string; now?: boolean; inbox?: boolean; direct?: boolean; retryFailed?: boolean }) => {
       banner();
       try {
+        // --inbox / --direct override POST_MODE; if neither, pass undefined
+        // so the upload service uses POST_MODE from env.
+        const inbox = opts.inbox ? true : opts.direct ? false : undefined;
         const result = opts.retryFailed
           ? await retryFailedUploads()
           : await uploadApprovedDrafts({
               draftId: opts.draft ? parseId(opts.draft, 'draft') : undefined,
               now: Boolean(opts.now),
-              inbox: Boolean(opts.inbox),
+              inbox,
             });
-        if (opts.inbox && result.uploaded.length) {
+        const usedInbox = inbox ?? env.POST_MODE !== 'direct';
+        if (usedInbox && result.uploaded.length) {
           console.log('\nOpen the TikTok app → notifications/inbox → finish each post there.');
         }
         for (const u of result.uploaded) {
@@ -460,6 +466,75 @@ export function buildProgram(): Command {
         console.log(
           '\nSet VIEWMAX_STYLE_PRESET / VIEWMAX_VOICE_PRESET in .env to change what videos use.',
         );
+      } catch (err) {
+        fail(err);
+      }
+    });
+
+  // ------------------------------------------------------------- go-live ---
+  program
+    .command('go-live')
+    .description('After TikTok approves the app: switch to automatic public direct posting (with captions)')
+    .option('--privacy <status>', 'privacy level', 'PUBLIC_TO_EVERYONE')
+    .option('--revert', 'switch back to inbox mode (tap-to-post)')
+    .action(async (opts: { privacy?: string; revert?: boolean }) => {
+      banner();
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const fs = require('fs-extra') as typeof import('fs-extra');
+        const path = require('node:path') as typeof import('node:path');
+        const envPath = path.resolve(process.cwd(), '.env');
+        if (!fs.existsSync(envPath)) throw new Error('.env not found — create it from .env.example first.');
+        let text = fs.readFileSync(envPath, 'utf8');
+
+        const setKey = (key: string, value: string) => {
+          const line = `${key}=${value}`;
+          text = new RegExp(`^${key}=.*$`, 'm').test(text)
+            ? text.replace(new RegExp(`^${key}=.*$`, 'm'), line)
+            : `${text.trimEnd()}\n${line}\n`;
+        };
+
+        if (opts.revert) {
+          setKey('POST_MODE', 'inbox');
+          fs.writeFileSync(envPath, text);
+          console.log('Reverted to INBOX mode. Videos go to your TikTok drafts; tap Post in the app.');
+          return;
+        }
+
+        console.log('Checking that your account can post publicly via the API…');
+        try {
+          // eslint-disable-next-line @typescript-eslint/no-var-requires
+          const axios = require('axios').default as typeof import('axios').default;
+          const { getValidAccessToken } = require('../connectors/tiktok/tiktokAuth') as typeof import('../connectors/tiktok/tiktokAuth');
+          const token = await getValidAccessToken();
+          const res = await axios.post(
+            'https://open.tiktokapis.com/v2/post/publish/creator_info/query/',
+            {},
+            { headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json; charset=UTF-8' }, timeout: 20000 },
+          );
+          const options: string[] = res.data?.data?.privacy_level_options ?? [];
+          const target = (opts.privacy ?? 'PUBLIC_TO_EVERYONE').toUpperCase();
+          if (!options.includes(target)) {
+            console.log(
+              `\n⚠ Your account can't post "${target}" yet (allowed: ${options.join(', ') || 'none'}).\n` +
+                'This usually means the app is not approved for public posting yet. Staying in inbox mode.',
+            );
+            return;
+          }
+        } catch (err) {
+          console.log(`\n⚠ Could not verify posting permissions: ${(err as Error).message.slice(0, 150)}`);
+          console.log('Not switching. Re-run once the app is approved and TikTok is connected.');
+          return;
+        }
+
+        setKey('POST_MODE', 'direct');
+        setKey('DEFAULT_PRIVACY_STATUS', (opts.privacy ?? 'PUBLIC_TO_EVERYONE').toUpperCase());
+        fs.writeFileSync(envPath, text);
+        console.log('\n✔ LIVE. Switched to automatic DIRECT posting.');
+        console.log('  - Videos now auto-post to your profile WITH caption + hashtags.');
+        console.log('  - No tapping, no caption typing.');
+        console.log(`  - Privacy: ${(opts.privacy ?? 'PUBLIC_TO_EVERYONE').toUpperCase()}`);
+        console.log('\nThe daily engine picks this up automatically on its next run.');
       } catch (err) {
         fail(err);
       }

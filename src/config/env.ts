@@ -80,6 +80,16 @@ const envSchema = z.object({
   // Content
   DEFAULT_NICHE: z.string().optional().default('finance'),
   NICHES: csvList,
+  // Posting mode: 'inbox' (upload to TikTok drafts, you tap Post — works
+  // pre-approval, but TikTok strips the caption) or 'direct' (auto-post WITH
+  // caption via the Content Posting API — requires an APPROVED app; public
+  // direct posts only work after audit). Keep 'inbox' until approved, then
+  // flip to 'direct' for fully hands-off, caption-included posting.
+  POST_MODE: z
+    .string()
+    .optional()
+    .default('inbox')
+    .transform((v) => (v.trim().toLowerCase() === 'direct' ? 'direct' : 'inbox')),
   DEFAULT_PRIVACY_STATUS: z
     .string()
     .optional()
