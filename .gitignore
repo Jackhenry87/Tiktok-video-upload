@@ -22,3 +22,7 @@ storage/
 .vscode/
 voices/
 assets/voices/
+
+# Large local media (gameplay backgrounds, downloaded clips)
+assets/backgrounds/
+storage/broll-cache/
