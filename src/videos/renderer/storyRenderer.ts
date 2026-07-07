@@ -54,22 +54,48 @@ export async function pickBackgroundClip(): Promise<string | undefined> {
   return fetchBrollClip(query, 10);
 }
 
-export function synthesizeVoice(text: string, wavPath: string): Promise<void> {
+function runTtsProcess(cmd: string, args: string[], text: string, label: string): Promise<void> {
   return new Promise((resolve, reject) => {
-    const model = path.resolve(process.cwd(), VOICE_MODEL);
-    const proc = spawn('piper', ['-m', model, '-f', wavPath]);
+    const proc = spawn(cmd, args);
     let stderr = '';
     proc.stderr.on('data', (d) => {
       stderr += d.toString().slice(-2000);
     });
-    proc.on('error', (e) => reject(new Error(`piper: ${e.message}`)));
+    proc.on('error', (e) => reject(new Error(`${label}: ${e.message}`)));
     proc.on('close', (code) => {
       if (code === 0) resolve();
-      else reject(new Error(`piper exited ${code}: ${stderr.slice(-500)}`));
+      else reject(new Error(`${label} exited ${code}: ${stderr.slice(-500)}`));
     });
     proc.stdin.write(text);
     proc.stdin.end();
   });
+}
+
+/**
+ * Voiceover synthesis. Prefers Kokoro (local neural TTS, natural prosody);
+ * falls back to Piper when the Kokoro model isn't installed.
+ */
+export async function synthesizeVoice(text: string, wavPath: string): Promise<void> {
+  const kokoroModel = path.resolve(process.cwd(), 'assets/voices/kokoro-v1.0.onnx');
+  if (await fs.pathExists(kokoroModel)) {
+    try {
+      await runTtsProcess(
+        'python3',
+        [path.resolve(process.cwd(), 'scripts/tts_kokoro.py'), wavPath, 'am_michael', '1.06'],
+        text,
+        'kokoro-tts',
+      );
+      return;
+    } catch (err) {
+      logRenderStep(`kokoro failed (${(err as Error).message.slice(0, 120)}) — falling back to piper`);
+    }
+  }
+  await runTtsProcess(
+    'piper',
+    ['-m', path.resolve(process.cwd(), VOICE_MODEL), '-f', wavPath],
+    text,
+    'piper',
+  );
 }
 
 interface CaptionChunk {
