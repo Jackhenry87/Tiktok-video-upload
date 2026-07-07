@@ -49,7 +49,10 @@ export function brollQuery(instruction: string): string {
  * undefined when no key is set / nothing suitable found / any error occurs.
  * Never throws — b-roll is an enhancement, not a dependency.
  */
-export async function fetchBrollClip(instruction: string): Promise<string | undefined> {
+export async function fetchBrollClip(
+  instruction: string,
+  minDurationSec = 4,
+): Promise<string | undefined> {
   if (!env.PEXELS_API_KEY) return undefined;
   const query = brollQuery(instruction);
   if (!query || query === 'none') return undefined;
@@ -58,7 +61,7 @@ export async function fetchBrollClip(instruction: string): Promise<string | unde
     const res = await withRetry(
       () =>
         axios.get('https://api.pexels.com/videos/search', {
-          params: { query, orientation: 'portrait', size: 'medium', per_page: 5 },
+          params: { query, orientation: 'portrait', size: 'medium', per_page: 10 },
           headers: { Authorization: env.PEXELS_API_KEY },
           timeout: 20_000,
         }),
@@ -66,9 +69,9 @@ export async function fetchBrollClip(instruction: string): Promise<string | unde
     );
 
     const videos: PexelsVideo[] = res.data?.videos ?? [];
-    // Prefer clips at least 4s long with a portrait HD file.
-    for (const video of videos) {
-      if (video.duration < 4) continue;
+    // Prefer longer clips with a portrait HD file.
+    for (const video of [...videos].sort((a, b) => b.duration - a.duration)) {
+      if (video.duration < minDurationSec) continue;
       const file = [...video.video_files]
         .filter((f) => f.height >= f.width && f.height >= 1280)
         .sort((a, b) => Math.abs(a.height - 1920) - Math.abs(b.height - 1920))[0];

@@ -3,6 +3,7 @@ import fs from 'fs-extra';
 import os from 'node:os';
 import path from 'node:path';
 import { logRenderStep, probeDuration, runFfmpeg } from './ffmpegUtils';
+import { fetchBrollClip } from './stockFootage';
 
 /**
  * Story-format renderer: the proven "narrated story + word-pop captions
@@ -24,17 +25,33 @@ export function backgroundsDir(): string {
   return path.resolve(process.cwd(), 'assets/backgrounds');
 }
 
-/** Random user-provided gameplay/background clip, if any exist. */
+/** Licensed Pexels queries that fit the story format (high motion). */
+const STORY_BG_QUERIES = [
+  'video game gaming screen',
+  'satisfying slime',
+  'kinetic sand cutting',
+  'aerial city night driving',
+  'pouring paint abstract',
+  'ocean waves aerial',
+];
+
+/**
+ * Background priority: user-recorded gameplay from assets/backgrounds/ →
+ * licensed Pexels clip → undefined (renderer falls back to generated).
+ */
 export async function pickBackgroundClip(): Promise<string | undefined> {
   try {
     const files = (await fs.readdir(backgroundsDir())).filter((f) =>
       /\.(mp4|mov|mkv|webm)$/i.test(f),
     );
-    if (!files.length) return undefined;
-    return path.join(backgroundsDir(), files[Math.floor(Math.random() * files.length)]!);
+    if (files.length) {
+      return path.join(backgroundsDir(), files[Math.floor(Math.random() * files.length)]!);
+    }
   } catch {
-    return undefined;
+    // fall through to Pexels
   }
+  const query = STORY_BG_QUERIES[Math.floor(Math.random() * STORY_BG_QUERIES.length)]!;
+  return fetchBrollClip(query, 10);
 }
 
 export function synthesizeVoice(text: string, wavPath: string): Promise<void> {
