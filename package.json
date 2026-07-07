@@ -22,7 +22,8 @@
     "clean": "tsx src/index.ts clean",
     "create-story": "tsx src/index.ts create-story",
     "tiktok-auth": "tsx src/index.ts tiktok-auth",
-    "viewmax-catalog": "tsx src/index.ts viewmax-catalog"
+    "viewmax-catalog": "tsx src/index.ts viewmax-catalog",
+    "x-trends": "tsx src/index.ts x-trends"
   },
   "dependencies": {
     "axios": "^1.7.9",

@@ -465,6 +465,31 @@ export function buildProgram(): Command {
       }
     });
 
+  // ------------------------------------------------------------ x-trends ---
+  program
+    .command('x-trends')
+    .description('Fetch live trending topics from the X API (needs X_BEARER_TOKEN)')
+    .action(async () => {
+      banner();
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const { fetchXTrends, pickOpenerTrend } = require('../trends/xTrends') as typeof import('../trends/xTrends');
+        const trends = await fetchXTrends();
+        if (!trends) {
+          console.log('X_BEARER_TOKEN not set (or the request failed) — use free web-search trend scanning instead.');
+          return;
+        }
+        const opener = pickOpenerTrend(trends);
+        console.log(`Top opener candidate: "${opener?.name}"${opener?.postCount ? ` (${opener.postCount.toLocaleString()} posts)` : ''}\n`);
+        console.log('Current US trends:');
+        for (const t of trends.slice(0, 20)) {
+          console.log(`  ${t.postCount ? String(t.postCount).padStart(9) : '        -'}  ${t.name}`);
+        }
+      } catch (err) {
+        fail(err);
+      }
+    });
+
   return program;
 }
 

@@ -63,6 +63,8 @@ const envSchema = z.object({
     .transform((v) => (['local', 'viewmax'].includes(v.trim().toLowerCase()) ? v.trim().toLowerCase() : 'auto')),
   // Licensed stock b-roll (free key: https://www.pexels.com/api/)
   PEXELS_API_KEY: z.string().optional().default(''),
+  // X (Twitter) API v2 Bearer token for live trends (paid tier required)
+  X_BEARER_TOKEN: z.string().optional().default(''),
 
   // TikTok
   TIKTOK_CLIENT_KEY: z.string().optional().default(''),
