@@ -364,12 +364,13 @@ export function buildProgram(): Command {
     .option('--caption <text>', 'post caption')
     .option('--hashtags <list>', 'comma-separated hashtags', 'storytime,fyp')
     .option('--background <path>', 'specific background clip (defaults to assets/backgrounds/ random)')
+    .option('--part <n>', 'series part number (adds a PART n badge for 2+)')
     .action(async (opts: Record<string, string | undefined>) => {
       banner();
       try {
         const { createStoryDraft } = await import('../videos/storyService');
         const fs = (await import('fs-extra')).default;
-        let stories: { title: string; story: string; caption: string; hashtags: string[]; background?: string }[];
+        let stories: { title: string; story: string; caption: string; hashtags: string[]; background?: string; part?: number }[];
         if (opts.file) {
           const data = await fs.readJson(opts.file);
           stories = Array.isArray(data) ? data : [data];
@@ -381,6 +382,7 @@ export function buildProgram(): Command {
             caption: opts.caption ?? opts.title,
             hashtags: (opts.hashtags ?? 'storytime').split(',').map((h) => h.trim()).filter(Boolean),
             background: opts.background,
+            part: opts.part ? Number(opts.part) : undefined,
           }];
         }
         for (const s of stories) {

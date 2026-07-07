@@ -119,6 +119,7 @@ function escapeAss(text: string): string {
 export async function writeAssCaptions(
   chunks: CaptionChunk[],
   assPath: string,
+  badge?: { text: string; untilSec?: number },
 ): Promise<void> {
   const header = `[Script Info]
 ScriptType: v4.00+
@@ -129,6 +130,7 @@ WrapStyle: 2
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
 Style: Word,DejaVu Sans,120,&H00FFFFFF,&H00FFFFFF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,10,4,5,60,60,0,1
+Style: Badge,DejaVu Sans,72,&H0000E5FF,&H0000E5FF,&H00000000,&H80000000,-1,0,0,0,100,100,2,0,1,7,3,8,60,60,120,1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Text
@@ -140,7 +142,11 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Text
       return `Dialogue: 0,${assTime(c.start)},${assTime(c.end)},Word,,0,0,0,${fx}${escapeAss(c.text.toUpperCase())}`;
     })
     .join('\n');
-  await fs.writeFile(assPath, header + events + '\n', 'utf8');
+  // Series badge ("PART 2") pinned top-center while the hook plays.
+  const badgeEvent = badge
+    ? `\nDialogue: 1,${assTime(0)},${assTime(badge.untilSec ?? 3)},Badge,,0,0,0,${escapeAss(badge.text.toUpperCase())}`
+    : '';
+  await fs.writeFile(assPath, header + events + badgeEvent + '\n', 'utf8');
 }
 
 export interface StoryRenderInput {
@@ -148,6 +154,8 @@ export interface StoryRenderInput {
   storyText: string;
   /** Optional background video (user gameplay / licensed clip). */
   backgroundPath?: string;
+  /** Series badge shown at the top during the hook, e.g. "PART 2". */
+  partLabel?: string;
   destPath: string;
 }
 
@@ -162,9 +170,13 @@ export async function renderStoryVideo(input: StoryRenderInput): Promise<string>
     if (!speechDur) throw new Error('TTS produced no audio');
     const totalDur = Math.min(90, speechDur + 0.8);
 
-    // 2. Word-pop captions.
+    // 2. Word-pop captions (+ optional PART badge).
     const assPath = path.join(workDir, 'captions.ass');
-    await writeAssCaptions(buildCaptionChunks(input.storyText, speechDur), assPath);
+    await writeAssCaptions(
+      buildCaptionChunks(input.storyText, speechDur),
+      assPath,
+      input.partLabel ? { text: input.partLabel, untilSec: 3.5 } : undefined,
+    );
 
     // 3. Background + captions + voiceover in one pass.
     logRenderStep(`story: rendering ${Math.round(totalDur)}s video`);

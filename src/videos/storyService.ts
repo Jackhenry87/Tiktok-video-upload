@@ -27,6 +27,8 @@ export interface StoryInput {
   hashtags: string[];
   /** Optional specific background clip path (defaults to library random). */
   background?: string;
+  /** Series part number (2+ renders a "PART n" badge over the hook). */
+  part?: number;
 }
 
 export interface StoryDraftResult {
@@ -89,6 +91,7 @@ export async function createStoryDraft(input: StoryInput): Promise<StoryDraftRes
     await renderStoryVideo({
       storyText: pass.text,
       backgroundPath: input.background,
+      partLabel: input.part && input.part >= 2 ? `Part ${input.part}` : undefined,
       destPath,
     });
     updateVideoJob(videoJobId, {
