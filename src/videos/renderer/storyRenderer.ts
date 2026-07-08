@@ -77,18 +77,24 @@ function runTtsProcess(cmd: string, args: string[], text: string, label: string)
  */
 export async function synthesizeVoice(text: string, wavPath: string): Promise<void> {
   const kokoroModel = path.resolve(process.cwd(), 'assets/voices/kokoro-v1.0.onnx');
+  // Kokoro occasionally writes an empty wav without erroring (transient ONNX
+  // hiccup), so try up to 3 times and verify the output actually has audio.
   if (await fs.pathExists(kokoroModel)) {
-    try {
-      await runTtsProcess(
-        'python3',
-        [path.resolve(process.cwd(), 'scripts/tts_kokoro.py'), wavPath, 'am_michael', '1.06'],
-        text,
-        'kokoro-tts',
-      );
-      return;
-    } catch (err) {
-      logRenderStep(`kokoro failed (${(err as Error).message.slice(0, 120)}) — falling back to piper`);
+    for (let attempt = 1; attempt <= 3; attempt += 1) {
+      try {
+        await runTtsProcess(
+          'python3',
+          [path.resolve(process.cwd(), 'scripts/tts_kokoro.py'), wavPath, 'am_michael', '1.06'],
+          text,
+          'kokoro-tts',
+        );
+        if (probeDuration(wavPath) > 0) return; // real audio produced
+        logRenderStep(`kokoro produced empty audio (attempt ${attempt}/3) — retrying`);
+      } catch (err) {
+        logRenderStep(`kokoro failed attempt ${attempt}/3: ${(err as Error).message.slice(0, 100)}`);
+      }
     }
+    logRenderStep('kokoro failed 3x — falling back to piper');
   }
   await runTtsProcess(
     'piper',
@@ -96,6 +102,7 @@ export async function synthesizeVoice(text: string, wavPath: string): Promise<vo
     text,
     'piper',
   );
+  if (!(probeDuration(wavPath) > 0)) throw new Error('TTS produced no audio (kokoro + piper both failed)');
 }
 
 interface CaptionChunk {
