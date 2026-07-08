@@ -376,7 +376,7 @@ export function buildProgram(): Command {
       try {
         const { createStoryDraft } = await import('../videos/storyService');
         const fs = (await import('fs-extra')).default;
-        let stories: { title: string; story: string; caption: string; hashtags: string[]; background?: string; part?: number }[];
+        let stories: { title: string; story: string; caption: string; hashtags: string[]; background?: string; part?: number; seriesOf?: number }[];
         if (opts.file) {
           const data = await fs.readJson(opts.file);
           stories = Array.isArray(data) ? data : [data];

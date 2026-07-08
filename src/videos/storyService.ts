@@ -29,6 +29,9 @@ export interface StoryInput {
   background?: string;
   /** Series part number (2+ renders a "PART n" badge over the hook). */
   part?: number;
+  /** Total parts in the series. When set, EVERY part (incl. 1) shows a
+   *  "PART x/N" badge — visible in the inbox thumbnail for easy sorting. */
+  seriesOf?: number;
 }
 
 export interface StoryDraftResult {
@@ -88,10 +91,15 @@ export async function createStoryDraft(input: StoryInput): Promise<StoryDraftRes
   const videoJobId = insertVideoJob({ ideaId, status: 'queued' });
   const destPath = videoFilePath(videoJobId);
   try {
+    const partLabel = input.seriesOf
+      ? `Part ${input.part ?? 1}/${input.seriesOf}`
+      : input.part && input.part >= 2
+        ? `Part ${input.part}`
+        : undefined;
     await renderStoryVideo({
       storyText: pass.text,
       backgroundPath: input.background,
-      partLabel: input.part && input.part >= 2 ? `Part ${input.part}` : undefined,
+      partLabel,
       destPath,
     });
     updateVideoJob(videoJobId, {
