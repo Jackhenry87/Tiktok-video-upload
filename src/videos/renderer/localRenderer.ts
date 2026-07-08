@@ -169,7 +169,9 @@ export async function renderVideo(
         ['-i', silentPath, '-i', music, '-filter_complex',
           `[1:a]volume=0.22,afade=t=in:d=0.5,afade=t=out:st=${Math.max(0, totalDur - 1)}:d=1[a]`,
           '-map', '0:v', '-map', '[a]', '-t', String(totalDur),
-          '-c:v', 'copy', '-c:a', 'aac', '-b:a', '128k', destPath],
+          // TikTok-friendly: stereo 44.1kHz audio + faststart for mobile editor.
+          '-c:v', 'copy', '-c:a', 'aac', '-b:a', '128k', '-ar', '44100', '-ac', '2',
+          '-movflags', '+faststart', destPath],
         'mux music',
       );
     } else {
@@ -180,7 +182,8 @@ export async function renderVideo(
           '-filter_complex',
           `[1:a][2:a]amix=inputs=2,volume=0.05,tremolo=f=0.3:d=0.4,afade=t=in:d=1,afade=t=out:st=${Math.max(0, totalDur - 1.5)}:d=1.5[a]`,
           '-map', '0:v', '-map', '[a]',
-          '-c:v', 'copy', '-c:a', 'aac', '-b:a', '96k', '-shortest', destPath],
+          '-c:v', 'copy', '-c:a', 'aac', '-b:a', '96k', '-ar', '44100', '-ac', '2',
+          '-movflags', '+faststart', '-shortest', destPath],
         'mux ambient audio',
       );
     }
