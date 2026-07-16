@@ -1,0 +1,28 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+
+# Environment / secrets — never commit real keys
+.env
+.env.local
+.env.*.local
+
+# Local data (SQLite database, generated videos, drafts, thumbnails)
+data/
+storage/
+
+# Logs
+*.log
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
+voices/
+assets/voices/
+
+# Large local media (gameplay backgrounds, downloaded clips)
+assets/backgrounds/
+storage/broll-cache/

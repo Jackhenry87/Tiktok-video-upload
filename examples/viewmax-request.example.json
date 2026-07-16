@@ -1,0 +1,47 @@
+{
+  "$comment": "Example ViewMax createVideoJob request payload (see src/connectors/viewmax/viewmaxTypes.ts). Endpoint paths and field names are placeholders until real ViewMax docs are available.",
+  "script": "[Scene 1 — 2s] Stop scrolling — your paycheck has a plan problem\n[Scene 2 — 3s] First: the one thing that actually matters about the 50/30/20 budget rule challenge.\n[Scene 3 — 4s] Second: the mistake almost everyone makes here.\n[Scene 4 — 3s] Third: the simple way to start today.\n[Scene 5 — 3s] Follow for a weekly money rule",
+  "scenes": [
+    {
+      "index": 0,
+      "durationSec": 2,
+      "description": "Hook — direct to camera, high energy",
+      "onScreenText": "Stop scrolling — your paycheck has a…",
+      "voiceover": "Stop scrolling — your paycheck has a plan problem",
+      "brollInstruction": "none — face to camera or bold title card",
+      "transition": "text slam on beat 1"
+    },
+    {
+      "index": 1,
+      "durationSec": 3,
+      "description": "Beat 1: the one thing that matters",
+      "onScreenText": "First: the one thing that actually matters…",
+      "voiceover": "First: the one thing that actually matters about the 50/30/20 budget rule challenge.",
+      "brollInstruction": "phone showing a budgeting app",
+      "transition": "punch-in zoom + text slam"
+    }
+  ],
+  "voiceoverText": "Stop scrolling — your paycheck has a plan problem First: the one thing that actually matters…",
+  "onScreenText": [
+    "Stop scrolling — your paycheck has a…",
+    "First: the one thing that actually matters…"
+  ],
+  "format": "9:16",
+  "resolution": "1080x1920",
+  "durationTargetSec": 15,
+  "stylePreset": "style-bold-captions",
+  "voicePreset": "voice-alex",
+  "backgroundMusic": {
+    "enabled": true,
+    "mood": "upbeat lo-fi or light percussion, licensed/royalty-free only"
+  },
+  "captionsEnabled": true,
+  "branding": {
+    "handle": "@yourhandle",
+    "primaryColor": "#312e81"
+  },
+  "watermark": {
+    "enabled": false
+  },
+  "outputFormat": "mp4"
+}

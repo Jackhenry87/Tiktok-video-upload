@@ -1,0 +1,17 @@
+{
+  "$comment": "Example TikTok Content Posting API direct-post init payload (POST https://open.tiktokapis.com/v2/post/publish/video/init/ with Authorization: Bearer <TIKTOK_ACCESS_TOKEN>). After init, the video bytes are PUT to the returned upload_url with Content-Range headers, then status is polled at /v2/post/publish/status/fetch/.",
+  "post_info": {
+    "title": "The 50/30/20 budget rule challenge — the short version. Save this for later 📌 Not financial advice. Educational content only. #personalfinance #moneytips #investing #budgeting",
+    "privacy_level": "SELF_ONLY",
+    "disable_duet": false,
+    "disable_comment": false,
+    "disable_stitch": false,
+    "video_cover_timestamp_ms": 1000
+  },
+  "source_info": {
+    "source": "FILE_UPLOAD",
+    "video_size": 4194304,
+    "chunk_size": 4194304,
+    "total_chunk_count": 1
+  }
+}

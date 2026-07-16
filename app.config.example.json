@@ -1,0 +1,27 @@
+{
+  "$comment": "Copy to app.config.json to override defaults. All fields optional.",
+  "activeNiches": ["finance", "ai tools"],
+  "minTrendScore": 55,
+  "postingTimes": ["09:00", "13:00", "19:00"],
+  "scoringWeights": {
+    "recency": 0.2,
+    "nicheMatch": 0.2,
+    "searchInterest": 0.2,
+    "relevance": 0.1,
+    "contentFit": 0.1,
+    "competition": 0.1,
+    "repeatability": 0.1
+  },
+  "manualTrends": [
+    {
+      "topic": "Roth IRA vs 401k for your first job",
+      "category": "education",
+      "niche": "finance",
+      "suggestedHook": "Your first paycheck deserves a better plan",
+      "suggestedHashtags": ["rothira", "401k"],
+      "estimatedStrength": 70,
+      "sourceUrl": "https://example.com/manually-spotted",
+      "dateFound": "2026-07-06"
+    }
+  ]
+}

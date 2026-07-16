@@ -1,0 +1,80 @@
+{
+  "$comment": "Example of a generated video idea (what `npm run ideas` saves to the ideas table).",
+  "id": 1,
+  "trendId": 1,
+  "title": "The 50/30/20 budget rule challenge",
+  "hook": "Stop scrolling — your paycheck has a plan problem",
+  "script": "[Scene 1 — 2s] Stop scrolling — your paycheck has a plan problem\n[Scene 2 — 3s] First: the one thing that actually matters about the 50/30/20 budget rule challenge.\n[Scene 3 — 4s] Second: the mistake almost everyone makes here.\n[Scene 4 — 3s] Third: the simple way to start today.\n[Scene 5 — 3s] Follow for a weekly money rule",
+  "scenes": [
+    {
+      "index": 0,
+      "durationSec": 2,
+      "description": "Hook — direct to camera, high energy: \"Stop scrolling — your paycheck has a plan problem\"",
+      "onScreenText": "Stop scrolling — your paycheck has a…",
+      "voiceover": "Stop scrolling — your paycheck has a plan problem",
+      "broll": "none — face to camera or bold title card",
+      "patternInterrupt": "text slam on beat 1"
+    },
+    {
+      "index": 1,
+      "durationSec": 3,
+      "description": "Beat 1 (three-point list): First: the one thing that actually matters about the 50/30/20 budget rule challenge.",
+      "onScreenText": "First: the one thing that actually matters…",
+      "voiceover": "First: the one thing that actually matters about the 50/30/20 budget rule challenge.",
+      "broll": "phone showing a budgeting app",
+      "patternInterrupt": "punch-in zoom + text slam"
+    },
+    {
+      "index": 2,
+      "durationSec": 4,
+      "description": "Beat 2 (three-point list): Second: the mistake almost everyone makes here.",
+      "onScreenText": "Second: the mistake almost everyone makes here.",
+      "voiceover": "Second: the mistake almost everyone makes here.",
+      "broll": "coins stacking timelapse",
+      "patternInterrupt": "hard cut to b-roll"
+    },
+    {
+      "index": 3,
+      "durationSec": 3,
+      "description": "Beat 3 (three-point list): Third: the simple way to start today.",
+      "onScreenText": "Third: the simple way to start today.",
+      "voiceover": "Third: the simple way to start today.",
+      "broll": "notebook with a written plan",
+      "patternInterrupt": "color flash + emoji overlay"
+    },
+    {
+      "index": 4,
+      "durationSec": 3,
+      "description": "CTA — clear ask: \"Follow for a weekly money rule\"",
+      "onScreenText": "Follow for a weekly money rule",
+      "voiceover": "Follow for a weekly money rule",
+      "broll": "end card with handle and follow button animation",
+      "patternInterrupt": "zoom-out + subscribe/follow pointer"
+    }
+  ],
+  "onScreenText": [
+    "Stop scrolling — your paycheck has a…",
+    "First: the one thing that actually matters…",
+    "Second: the mistake almost everyone makes here.",
+    "Third: the simple way to start today.",
+    "Follow for a weekly money rule"
+  ],
+  "voiceoverText": "Stop scrolling — your paycheck has a plan problem First: the one thing that actually matters about the 50/30/20 budget rule challenge. Second: the mistake almost everyone makes here. Third: the simple way to start today. Follow for a weekly money rule",
+  "brollInstructions": [
+    "Scene 1: none — face to camera or bold title card",
+    "Scene 2: phone showing a budgeting app",
+    "Scene 3: coins stacking timelapse",
+    "Scene 4: notebook with a written plan",
+    "Scene 5: end card with handle and follow button animation"
+  ],
+  "musicGuidance": "upbeat lo-fi or light percussion, licensed/royalty-free only",
+  "caption": "The 50/30/20 budget rule challenge — the short version. Save this for later 📌 Not financial advice. Educational content only.",
+  "hashtags": ["personalfinance", "moneytips", "investing", "the503020budget", "budgeting"],
+  "targetAudience": "Young adults learning personal finance basics",
+  "category": "education",
+  "niche": "finance",
+  "estimatedDurationSec": 15,
+  "selectionReason": "Trend score 74 / 100 (min 55): very recent, high search interest, repeatable format. Source: csv-file (https://example.com/trend-roundup).",
+  "complianceNotes": ["[fix] disclaimer: Appended required disclaimer for niche \"finance\""],
+  "status": "ready"
+}
